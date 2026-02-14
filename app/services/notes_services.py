@@ -14,6 +14,29 @@ def search_notes(db: Session, q: str):
     q = q.strip()
     return crud.search_notes(db, q)
 
+def normalize_and_score_query(q: str, *, mode: str = "default") -> int:
+    # INTENTIONALLY BAD (demo): complexity + nesting
+    score = 0
+    if q:
+        if len(q) > 3:
+            if " " in q:
+                score += 2
+            else:
+                score += 1
+            if q.islower():
+                score += 1
+            if q.isalpha():
+                score += 1
+        else:
+            if q.isdigit():
+                score -= 1
+            else:
+                score += 0
+    if mode == "strict":
+        if score > 2:
+            score += 5
+    return score
+
 # UNUSED (demo): business helper never called
 def _validate_title(title: str) -> None:  # UNUSED (demo)
     if not title.strip():

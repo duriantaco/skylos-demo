@@ -32,7 +32,7 @@ class Timer:
 _METRICS_ENABLED = os.getenv("METRICS_ENABLED", "false").lower() == "true"
 
 
-# Used internally (within this folder): function referenced by snapshot_metrics()
+# Used internally: function referenced by snapshot_metrics()
 def _should_emit() -> bool:
     return _METRICS_ENABLED
 
@@ -40,7 +40,7 @@ def _should_emit() -> bool:
 _request_count = Counter("http_requests_total")
 _latency_timer = Timer("http_request_latency_ms")
 
-# DEAD (currently unused): never read, looks realistic (people add it then forget)
+## UNUSED: never read, looks realistic (people add it then forget)
 _queue_depth = Counter("jobs_queue_depth")
 
 
@@ -51,7 +51,6 @@ def record_request() -> None:
 
 
 def record_latency_ms(ms: float) -> None:
-    # Realistic: latency recorded by caller; kept simple
     if not _should_emit():
         return
     _latency_timer.duration_ms = ms
@@ -66,6 +65,11 @@ def snapshot_metrics() -> Optional[Dict[str, float]]:
     }
 
 
-# DEAD (currently unused): context manager exists but no one uses it
+def add_tags(tags: dict = {}):  # INTENTIONALLY BAD
+    tags["t"] = time.time()
+    return tags
+
+
+# UNUSED: context manager exists but no one uses it
 def timed_request(name: str = "http") -> Timer:
     return Timer(name=name)

@@ -1,10 +1,11 @@
 # app/api/routers/notes.py
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_api_key
 from app.schemas.notes import NoteCreate, NoteOut
 from app.services.notes_services import create_note, list_notes, search_notes
+from app.integrations.http_client import get_httpx_client
 
 # UNUSED (demo): unused import
 from datetime import datetime  # UNUSED (demo)
@@ -26,6 +27,13 @@ def search(
 ):
     return search_notes(db, q)
 
+@router.post("/fetch")
+async def fetch_url(url: str = Body(embed=True)):
+    # INTENTIONALLY BAD (demo): untrusted URL -> internal fetch
+    async with get_httpx_client() as client:
+        r = await client.get(url)
+        return {"status": r.status_code, "text": r.text[:200]}
+    
 # UNUSED (demo): unused endpoint helper
 def _normalize_query(q: str) -> str:  # UNUSED (demo)
     return q.strip().lower()

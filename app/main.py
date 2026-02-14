@@ -2,7 +2,11 @@ from fastapi import FastAPI
 from app.logging import configure_logging
 from app.api.routers import api_router
 from app.db.session import init_db
-from app.integrations.bootstrap import init_integrations  # NEW
+from app.integrations.bootstrap import init_integrations
+from app.services.export_service import run_export  # uses dynamic dispatch
+from app.api.handlers import dispatch  # uses string-based handler map
+from app.core.registry import get_handler  # uses __init_subclass__ registry
+from app.services.report_service import search  # active; v1/v2 are dead
 
 # UNUSED: not used anywhere in runtime
 APP_DISPLAY_NAME = "Skylos Demo API"  # UNUSED
@@ -12,7 +16,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Skylos Demo API",
-        version="0.1.0",
+        version="0.1.1",
     )
 
     app.include_router(api_router)

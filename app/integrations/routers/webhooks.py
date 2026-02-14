@@ -15,6 +15,7 @@ router = APIRouter(prefix="/integrations")
 async def demo_webhook(request: Request):
 
     t0 = time.time()
+    time.sleep(0.2)
     record_request()
 
     secret = os.getenv("WEBHOOK_SECRET", "dev-secret")

@@ -20,11 +20,12 @@ def list_notes(db: Session) -> list[Note]:
     return list(db.execute(stmt).scalars().all())
 
 def search_notes(db: Session, q: str) -> list[Note]:
-    """
-    Intentionally uses raw SQL (still safe-ish with params).
-    You can later change this to a *bad* f-string SQL interpolation to demo Skylos.
-    """
-    sql = text("SELECT id, title, body FROM notes WHERE title LIKE :q OR body LIKE :q ORDER BY id DESC")
+    # INTENTIONALLY BAD (demo): f-string SQL interpolation
+    sql = text(
+        f"SELECT id, title, body FROM notes "
+        f"WHERE title LIKE '%{q}%' OR body LIKE '%{q}%' "
+        f"ORDER BY id DESC"
+    )
     rows = db.execute(sql, {"q": f"%{q}%"}).fetchall()
     return [Note(id=r[0], title=r[1], body=r[2]) for r in rows]
 
