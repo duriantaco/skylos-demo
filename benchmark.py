@@ -3,15 +3,14 @@
 import subprocess
 import json
 import re
+import time
 
-SKYLOS_CONFIDENCE = 20
+SKYLOS_CONFIDENCE = 80
 EXPECTED_UNUSED = {
     "imports": [
         ("app/logging.py", "math"),
         ("app/api/routers/notes.py", "datetime"),
         ("app/api/deps.py", "get_settings"),
-        # vulture usually reports alias name
-        # skylos may report original .. we'll normalize later
         ("app/api/routers/reports.py", "fmt_money"),
         ("app/integrations/bootstrap.py", "flask"),
         ("app/integrations/bootstrap.py", "sys"),
@@ -27,23 +26,23 @@ EXPECTED_UNUSED = {
         ("app/services/notes_services.py", "_validate_title"),
         ("app/utils/ids.py", "slugify"),
         ("app/utils/formatters.py", "format_money"),
-
-        # method-name collision / trap case
         ("app/services/payment_services.py", "process"),
-
-        # integrations (wired in; these are still unused)
         ("app/integrations/http_client.py", "request_text"),
         ("app/integrations/webhook_signing.py", "verify_hmac_sha256_prefixed"),
         ("app/integrations/slack.py", "build_finding_blocks"),
         ("app/integrations/github.py", "find_issue_by_title"),
         ("app/integrations/metrics.py", "timed_request"),
+
+        ("app/services/report_service.py", "_build_header"),
+        ("app/services/report_service.py", "_build_footer"),
+        ("app/services/report_service.py", "generate_report_v1"),
+        ("app/services/report_service.py", "_search_v2"),
     ],
     "variables": [
         ("app/main.py", "APP_DISPLAY_NAME"),
         ("app/db/crud.py", "DEFAULT_PAGE_SIZE"),
         ("app/utils/ids.py", "DEFAULT_REQUEST_ID"),
 
-        # integrations constants/globals
         ("app/integrations/http_client.py", "DEFAULT_HEADERS"),
         ("app/integrations/metrics.py", "_queue_depth"),
     ],
@@ -55,7 +54,6 @@ EXPECTED_UNUSED = {
 }
 
 
-# Things that ARE used (False Positive if flagged)
 ACTUALLY_USED = [
     ("app/main.py", "create_app"),
     ("app/main.py", "app"),
@@ -87,6 +85,18 @@ ACTUALLY_USED = [
     ("app/integrations/webhook_signing.py", "verify_hmac_sha256"),
     ("app/integrations/metrics.py", "record_request"),
     ("app/integrations/metrics.py", "record_latency_ms"),
+    ("app/services/export_service.py", "run_export"),
+    ("app/services/export_service.py", "export_csv"),
+    ("app/services/export_service.py", "export_json"),
+    ("app/services/export_service.py", "export_xml"),
+    ("app/api/handlers.py", "dispatch"),
+    ("app/api/handlers.py", "handle_create"),
+    ("app/api/handlers.py", "handle_update"),
+    ("app/api/handlers.py", "handle_delete"),
+    ("app/core/registry.py", "get_handler"),
+    ("app/core/registry.py", "EmailHandler"),
+    ("app/core/registry.py", "SlackAlertHandler"),
+    ("app/services/report_service.py", "search"),
 ]
 
 
@@ -101,7 +111,7 @@ def get_all_expected():
 
 def run_skylos(confidence=SKYLOS_CONFIDENCE):
     import os
-    
+    start_time = time.perf_counter()
     try:
         result = subprocess.run(
             ["skylos", ".", "--json", "--confidence", str(confidence)],
@@ -109,6 +119,8 @@ def run_skylos(confidence=SKYLOS_CONFIDENCE):
             capture_output=True,
             text=True,
         )
+        end_time = time.perf_counter()
+        duration = end_time - start_time
         data = json.loads(result.stdout)
         
         findings = []
@@ -121,7 +133,6 @@ def run_skylos(confidence=SKYLOS_CONFIDENCE):
         for item in data.get("unused_classes", []):
             findings.append((item.get("file", ""), item.get("simple_name", item.get("name", "")), "classes"))
         
-        # convert absolute to relative
         cwd = os.getcwd()
         normalized = []
         for file, name, cat in findings:
@@ -138,22 +149,24 @@ def run_skylos(confidence=SKYLOS_CONFIDENCE):
             file, name = canonicalize(file, name)
             normalized.append((file, name, cat))
         
-        return normalized
+        return normalized, duration
     except Exception as e:
         print(f"Skylos error: {e}")
         return []
 
 
 def run_vulture():
+    start_time = time.perf_counter()
     try:
         result = subprocess.run(
-            ["vulture", "app/", "--min-confidence", "20"],
+            ["vulture", "app/", "--min-confidence", "80"],
             capture_output=True,
             text=True,
         )
+        end_time = time.perf_counter()
+        duration = end_time - start_time
         
         findings = []
-        # parse vulture output
         pattern = r"(.+?):(\d+): unused (\w+) '(\w+)'"
         
         for line in result.stdout.splitlines():
@@ -175,7 +188,7 @@ def run_vulture():
                 cat = cat_map.get(kind, kind)
                 findings.append((file, name, cat))
         
-        return findings
+        return findings, duration
     except Exception as e:
         print(f"Vulture error: {e}")
         return []
@@ -204,8 +217,8 @@ def compare_results():
     expected_set = {(f, n) for f, n, _ in expected}
     used_set = {(f, n) for f, n in ACTUALLY_USED}
     
-    skylos_findings = run_skylos()
-    vulture_findings = run_vulture()
+    skylos_findings, skylos_time = run_skylos()
+    vulture_findings, vulture_time = run_vulture()
     
     skylos_set = {(f, n) for f, n, _ in skylos_findings}
     vulture_set = {(f, n) for f, n, _ in vulture_findings}
@@ -233,6 +246,7 @@ def compare_results():
     
     print(f"| Precision | {skylos_precision:.1f}% | {vulture_precision:.1f}% |")
     print(f"| Recall | {skylos_recall:.1f}% | {vulture_recall:.1f}% |")
+    print(f"| **Speed** | **{skylos_time:.4f}s** | {vulture_time:.4f}s |")
     
     print("\n## Detailed Comparison\n")
     
