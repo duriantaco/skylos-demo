@@ -643,7 +643,7 @@ If you use this benchmark in your research or tools, please cite:
 
 ```
 Skylos Dead-Code Detection Benchmark
-https://github.com/your-org/skylos-demo
+https://github.com/duriantaco/skylos-demo
 Ground-truthed evaluation of static and LLM-hybrid dead code detection
 ```
 
