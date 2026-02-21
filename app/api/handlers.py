@@ -10,10 +10,7 @@ def handle_delete(payload: dict) -> dict:
     return {"action": "deleted", "data": payload}
 
 
-HANDLER_MAP = {
-    action: globals()[f"handle_{action}"]
-    for action in ("create", "update", "delete")
-}
+HANDLER_MAP = {action: globals()[f"handle_{action}"] for action in ("create", "update", "delete")}
 
 
 def dispatch(action: str, payload: dict) -> dict:

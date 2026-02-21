@@ -36,7 +36,9 @@ async def get_repo(
         return None
 
     async with get_httpx_client(base_url=cfg.api_base) as client:
-        return await request_json(client, "GET", f"/repos/{owner}/{repo}", headers=_auth_headers(cfg))
+        return await request_json(
+            client, "GET", f"/repos/{owner}/{repo}", headers=_auth_headers(cfg)
+        )
 
 
 # DEAD (currently unused): helper for checking if an issue exists, never called

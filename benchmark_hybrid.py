@@ -109,12 +109,14 @@ ACTUALLY_USED = [
     ("app/services/report_service.py", "search"),
 ]
 
+
 def get_all_expected():
     items = []
     for category, entries in EXPECTED_UNUSED.items():
         for file, name in entries:
             items.append((file, name, category))
     return items
+
 
 def canonicalize(file: str, name: str) -> tuple[str, str]:
     file = file.replace("\\", "/")
@@ -124,15 +126,18 @@ def canonicalize(file: str, name: str) -> tuple[str, str]:
         name = "fmt_money"
     return file, name
 
+
 def _relativize_path(p: str) -> str:
     import os
+
     cwd = os.getcwd().replace("\\", "/")
     p = (p or "").replace("\\", "/")
     if p.startswith(cwd):
-        p = p[len(cwd):].lstrip("/")
+        p = p[len(cwd) :].lstrip("/")
     if p.startswith("./"):
         p = p[2:]
     return p
+
 
 def run_skylos_static(confidence=DEFAULT_CONFIDENCE):
     start = time.perf_counter()
@@ -144,19 +149,45 @@ def run_skylos_static(confidence=DEFAULT_CONFIDENCE):
     dur = time.perf_counter() - start
 
     if result.returncode != 0:
-        raise RuntimeError(f"skylos static failed (exit={result.returncode}):\n{result.stderr[:800]}")
+        raise RuntimeError(
+            f"skylos static failed (exit={result.returncode}):\n{result.stderr[:800]}"
+        )
 
     data = json.loads(result.stdout or "{}")
 
     findings = []
     for item in data.get("unused_functions", []):
-        findings.append((_relativize_path(item.get("file", "")), item.get("simple_name") or item.get("name") or "", "functions"))
+        findings.append(
+            (
+                _relativize_path(item.get("file", "")),
+                item.get("simple_name") or item.get("name") or "",
+                "functions",
+            )
+        )
     for item in data.get("unused_imports", []):
-        findings.append((_relativize_path(item.get("file", "")), item.get("simple_name") or item.get("name") or "", "imports"))
+        findings.append(
+            (
+                _relativize_path(item.get("file", "")),
+                item.get("simple_name") or item.get("name") or "",
+                "imports",
+            )
+        )
     for item in data.get("unused_variables", []):
-        findings.append((_relativize_path(item.get("file", "")), item.get("simple_name") or item.get("name") or "", "variables"))
+        findings.append(
+            (
+                _relativize_path(item.get("file", "")),
+                item.get("simple_name") or item.get("name") or "",
+                "variables",
+            )
+        )
     for item in data.get("unused_classes", []):
-        findings.append((_relativize_path(item.get("file", "")), item.get("simple_name") or item.get("name") or "", "classes"))
+        findings.append(
+            (
+                _relativize_path(item.get("file", "")),
+                item.get("simple_name") or item.get("name") or "",
+                "classes",
+            )
+        )
 
     out = []
     for file, name, cat in findings:
@@ -171,12 +202,24 @@ def run_skylos_static(confidence=DEFAULT_CONFIDENCE):
 
     return out, dur
 
+
 def run_skylos_hybrid_json():
     out_path = Path(tempfile.gettempdir()) / "skylos_hybrid.json"
 
     start = time.perf_counter()
     result = subprocess.run(
-        ["skylos", "agent", "analyze", ".", "--format", "json", "--min-confidence", "low", "--output", str(out_path)],
+        [
+            "skylos",
+            "agent",
+            "analyze",
+            ".",
+            "--format",
+            "json",
+            "--min-confidence",
+            "low",
+            "--output",
+            str(out_path),
+        ],
         capture_output=True,
         text=True,
     )
@@ -216,13 +259,13 @@ def run_skylos_hybrid_json():
 
     def _deadcode_cat(f: dict) -> str:
         t = _typ(f)
-        if t == "function": 
+        if t == "function":
             return "functions"
-        if t == "import": 
+        if t == "import":
             return "imports"
-        if t == "variable": 
+        if t == "variable":
             return "variables"
-        if t == "class": 
+        if t == "class":
             return "classes"
         return "unknown"
 
@@ -266,6 +309,7 @@ def run_skylos_hybrid_json():
 
     return deadcode_all, deadcode_agree, deadcode_llm_only, deadcode_static_only, dur
 
+
 def run_vulture():
     start_time = time.perf_counter()
 
@@ -282,7 +326,7 @@ def run_vulture():
     stderr = result.stderr or ""
 
     findings = []
-    pattern = r"(.+?):(\d+): unused (\w+) '(\w+)'" 
+    pattern = r"(.+?):(\d+): unused (\w+) '(\w+)'"
 
     for line in stdout.splitlines():
         m = re.search(pattern, line)
@@ -324,22 +368,22 @@ def run_vulture():
     return findings, duration
 
 
-
 def _metrics(found_set, expected_set, used_set):
     tp = found_set & expected_set
     fp = found_set & used_set
     fn = expected_set - found_set
     if found_set:
-        prec = (len(tp) / len(found_set) * 100)
-    else: 
+        prec = len(tp) / len(found_set) * 100
+    else:
         prec = 0.0
-    
+
     if expected_set:
-        rec = (len(tp) / len(expected_set) * 100) 
+        rec = len(tp) / len(expected_set) * 100
     else:
         rec = 0.0
 
     return tp, fp, fn, prec, rec
+
 
 def compare_results(confidence=DEFAULT_CONFIDENCE):
     expected = get_all_expected()
@@ -354,12 +398,12 @@ def compare_results(confidence=DEFAULT_CONFIDENCE):
 
     vulture_findings, t_vulture = run_vulture()
 
-    s_static_set    = {(f, n) for f, n, _ in skylos_static}
-    s_hybrid_set    = {(f, n) for f, n, _ in skylos_hybrid}
-    s_agree_set     = {(f, n) for f, n, _ in dead_agree}
-    s_llm_only_set  = {(f, n) for f, n, _ in dead_llm_only}
+    s_static_set = {(f, n) for f, n, _ in skylos_static}
+    s_hybrid_set = {(f, n) for f, n, _ in skylos_hybrid}
+    s_agree_set = {(f, n) for f, n, _ in dead_agree}
+    s_llm_only_set = {(f, n) for f, n, _ in dead_llm_only}
     s_static_only_set = {(f, n) for f, n, _ in dead_static_only}
-    v_set           = {(f, n) for f, n, _ in vulture_findings}
+    v_set = {(f, n) for f, n, _ in vulture_findings}
 
     s_tp, s_fp, s_fn, s_prec, s_rec = _metrics(s_static_set, expected_set, used_set)
     h_tp, h_fp, h_fn, h_prec, h_rec = _metrics(s_hybrid_set, expected_set, used_set)
@@ -374,7 +418,9 @@ def compare_results(confidence=DEFAULT_CONFIDENCE):
     print(f"| False Negatives | {len(s_fn)} | {len(h_fn)} | {len(a_fn)} | {len(v_fn)} |")
     print(f"| Precision       | {s_prec:.1f}% | {h_prec:.1f}% | {a_prec:.1f}% | {v_prec:.1f}% |")
     print(f"| Recall          | {s_rec:.1f}% | {h_rec:.1f}% | {a_rec:.1f}% | {v_rec:.1f}% |")
-    print(f"| **Speed**       | **{t_static:.3f}s** | **{t_hybrid:.3f}s** | *(same run)* | {t_vulture:.3f}s |")
+    print(
+        f"| **Speed**       | **{t_static:.3f}s** | **{t_hybrid:.3f}s** | *(same run)* | {t_vulture:.3f}s |"
+    )
 
     static_tps = s_static_set & expected_set
     confirmed_tps = static_tps & s_agree_set
@@ -423,8 +469,10 @@ def compare_results(confidence=DEFAULT_CONFIDENCE):
     print()
     print("### Net Value of High-Confidence Subset (static∩llm)")
     if len(a_fp) < len(s_fp):
-        print(f"- Precision improvement: {s_prec:.1f}% → {a_prec:.1f}% "
-              f"(eliminated {len(s_fp) - len(a_fp)} false positive(s))")
+        print(
+            f"- Precision improvement: {s_prec:.1f}% → {a_prec:.1f}% "
+            f"(eliminated {len(s_fp) - len(a_fp)} false positive(s))"
+        )
     elif len(a_fp) == len(s_fp):
         print(f"- No precision improvement (same FP count: {len(a_fp)})")
     else:
@@ -432,8 +480,7 @@ def compare_results(confidence=DEFAULT_CONFIDENCE):
 
     recall_loss = len(s_tp) - len(a_tp)
     if recall_loss > 0:
-        print(f"- Recall cost: lost {recall_loss} true positive(s) "
-              f"({s_rec:.1f}% → {a_rec:.1f}%)")
+        print(f"- Recall cost: lost {recall_loss} true positive(s) ({s_rec:.1f}% → {a_rec:.1f}%)")
     else:
         print(f"- No recall cost (same TP count)")
 
@@ -472,16 +519,22 @@ def compare_results(confidence=DEFAULT_CONFIDENCE):
         all_expected_non_underscore = [(f, n) for f, n, _ in expected if not n.startswith("_")]
 
         print("\n## LLM Disagreement Bias Analysis\n")
-        print(f"- LLM missed {len(underscore_misses)}/{len(all_expected_underscore)} "
-              f"underscore-prefixed items "
-              f"({len(underscore_misses)/max(1,len(all_expected_underscore))*100:.0f}% miss rate)")
-        print(f"- LLM missed {len(non_underscore_misses)}/{len(all_expected_non_underscore)} "
-              f"non-underscore items "
-              f"({len(non_underscore_misses)/max(1,len(all_expected_non_underscore))*100:.0f}% miss rate)")
+        print(
+            f"- LLM missed {len(underscore_misses)}/{len(all_expected_underscore)} "
+            f"underscore-prefixed items "
+            f"({len(underscore_misses) / max(1, len(all_expected_underscore)) * 100:.0f}% miss rate)"
+        )
+        print(
+            f"- LLM missed {len(non_underscore_misses)}/{len(all_expected_non_underscore)} "
+            f"non-underscore items "
+            f"({len(non_underscore_misses) / max(1, len(all_expected_non_underscore)) * 100:.0f}% miss rate)"
+        )
         if len(underscore_misses) > len(non_underscore_misses):
-            print("- ⚠️  **Underscore-prefix bias detected**: LLM is more likely to "
-                  "mark `_`-prefixed dead code as alive (likely speculating about "
-                  "dynamic dispatch without evidence)")
+            print(
+                "- ⚠️  **Underscore-prefix bias detected**: LLM is more likely to "
+                "mark `_`-prefixed dead code as alive (likely speculating about "
+                "dynamic dispatch without evidence)"
+            )
 
     if llm_new_tps:
         print("\n## LLM-only Suggestions that match Expected Unused (extra credit)\n")
@@ -496,13 +549,20 @@ def compare_results(confidence=DEFAULT_CONFIDENCE):
     v_dfp_flagged = v_set & dfp_set  # vulture incorrectly flagged these
 
     print("\n## Dynamic Dispatch FP Traps (should NOT be flagged)\n")
-    print("These are used via getattr(), globals(), or __init_subclass__ — static can't see the references.\n")
+    print(
+        "These are used via getattr(), globals(), or __init_subclass__ — static can't see the references.\n"
+    )
     print("| Item | Mechanism | Static | Hybrid | High-Conf | Vulture |")
     print("|------|-----------|--------|--------|-----------|---------|")
     mechanisms = {
-        "export_csv": "getattr()", "export_json": "getattr()", "export_xml": "getattr()",
-        "handle_create": "globals()", "handle_update": "globals()", "handle_delete": "globals()",
-        "EmailHandler": "__init_subclass__", "SlackAlertHandler": "__init_subclass__",
+        "export_csv": "getattr()",
+        "export_json": "getattr()",
+        "export_xml": "getattr()",
+        "handle_create": "globals()",
+        "handle_update": "globals()",
+        "handle_delete": "globals()",
+        "EmailHandler": "__init_subclass__",
+        "SlackAlertHandler": "__init_subclass__",
     }
     for file, name in DYNAMIC_FALSE_POSITIVES:
         key = (file, name)
@@ -519,9 +579,10 @@ def compare_results(confidence=DEFAULT_CONFIDENCE):
     print(f"- High-Conf: {len(a_dfp_flagged)}/{len(dfp_set)} false positives")
     print(f"- Vulture: {len(v_dfp_flagged)}/{len(dfp_set)} false positives")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='Benchmark Skylos dead-code detection (Static + Hybrid LLM mode)',
+        description="Benchmark Skylos dead-code detection (Static + Hybrid LLM mode)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -535,23 +596,24 @@ Examples:
 
   # Skip LLM verification (static-only benchmark)
   python benchmark_hybrid.py --no-llm
-        """
+        """,
     )
     parser.add_argument(
-        '--confidence', '-c',
+        "--confidence",
+        "-c",
         type=int,
         default=DEFAULT_CONFIDENCE,
-        help=f'Confidence threshold for Skylos (default: {DEFAULT_CONFIDENCE})'
+        help=f"Confidence threshold for Skylos (default: {DEFAULT_CONFIDENCE})",
     )
     parser.add_argument(
-        '--no-llm',
-        action='store_true',
-        help='Skip LLM verification (run static-only benchmark)'
+        "--no-llm", action="store_true", help="Skip LLM verification (run static-only benchmark)"
     )
 
     args = parser.parse_args()
 
-    print(f"Running benchmark with confidence={args.confidence}, llm={'disabled' if args.no_llm else 'enabled'}")
+    print(
+        f"Running benchmark with confidence={args.confidence}, llm={'disabled' if args.no_llm else 'enabled'}"
+    )
     print()
 
     compare_results(confidence=args.confidence)

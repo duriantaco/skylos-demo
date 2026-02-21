@@ -3,9 +3,11 @@ from fastapi import APIRouter, Query
 
 router = APIRouter()
 
+
 @router.get("/health")
 def health():
     return {"ok": True}
+
 
 @router.get("/debug/read-file")
 def read_file(path: str = Query(...)):

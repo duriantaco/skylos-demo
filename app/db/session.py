@@ -13,8 +13,10 @@ engine = create_engine(
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+
 
 # UNUSED (demo): not used
 def _drop_all() -> None:  # UNUSED (demo)

@@ -11,6 +11,7 @@ from app.services.report_service import search  # active; v1/v2 are dead
 # UNUSED: not used anywhere in runtime
 APP_DISPLAY_NAME = "Skylos Demo API"  # UNUSED
 
+
 def create_app() -> FastAPI:
     configure_logging()
 

@@ -27,7 +27,9 @@ def _load_slack_config() -> Optional[SlackConfig]:
     )
 
 
-def _build_payload(text: str, cfg: SlackConfig, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _build_payload(
+    text: str, cfg: SlackConfig, extra: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"text": text, "username": cfg.username, "icon_emoji": cfg.icon_emoji}
     if cfg.channel:
         payload["channel"] = cfg.channel

@@ -8,6 +8,7 @@ from app.schemas.notes import NoteCreate
 # UNUSED (demo): constant not used
 DEFAULT_PAGE_SIZE = 50  # UNUSED (demo)
 
+
 def create_note(db: Session, payload: NoteCreate) -> Note:
     note = Note(title=payload.title, body=payload.body)
     db.add(note)
@@ -15,9 +16,11 @@ def create_note(db: Session, payload: NoteCreate) -> Note:
     db.refresh(note)
     return note
 
+
 def list_notes(db: Session) -> list[Note]:
     stmt = select(Note).order_by(Note.id.desc())
     return list(db.execute(stmt).scalars().all())
+
 
 def search_notes(db: Session, q: str) -> list[Note]:
     # INTENTIONALLY BAD (demo): f-string SQL interpolation
@@ -28,6 +31,7 @@ def search_notes(db: Session, q: str) -> list[Note]:
     )
     rows = db.execute(sql, {"q": f"%{q}%"}).fetchall()
     return [Note(id=r[0], title=r[1], body=r[2]) for r in rows]
+
 
 # UNUSED (demo): dead helper
 def _row_to_dict(row) -> dict:  # UNUSED (demo)

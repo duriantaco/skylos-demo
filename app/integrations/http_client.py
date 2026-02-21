@@ -17,7 +17,7 @@ class HttpRetryPolicy:
 
     def backoff(self, attempt_idx: int) -> float:
         # attempt_idx starts at 0
-        t = min(self.max_backoff_s, self.base_backoff_s * (2 ** attempt_idx))
+        t = min(self.max_backoff_s, self.base_backoff_s * (2**attempt_idx))
         return t
 
 
@@ -32,7 +32,6 @@ def get_httpx_client(
     base_url: Optional[str] = None,
     timeout: httpx.Timeout = _DEFAULT_TIMEOUT,
 ) -> httpx.AsyncClient:
-
     verify_ssl = os.getenv("HTTP_VERIFY_SSL", "true").lower() != "false"
 
     headers = {

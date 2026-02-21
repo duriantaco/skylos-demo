@@ -2,8 +2,10 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Text, Integer
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class Note(Base):
     __tablename__ = "notes"
@@ -11,6 +13,7 @@ class Note(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+
 
 # UNUSED (demo): model not referenced anywhere
 class Tag(Base):  # UNUSED (demo)

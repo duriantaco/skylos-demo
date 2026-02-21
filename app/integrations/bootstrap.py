@@ -7,8 +7,9 @@ from app.integrations.routers.webhooks import router as webhooks_router
 from app.integrations.slack import send_slack_message
 from app.integrations.github import get_repo
 from app.integrations.metrics import record_request
-import flask # UNUSED (demo)
+import flask  # UNUSED (demo)
 import sys
+
 
 def init_integrations(app: FastAPI) -> None:
     app.include_router(webhooks_router, tags=["integrations"])
