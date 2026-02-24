@@ -6,6 +6,8 @@ from app.api.deps import get_db, require_api_key
 from app.schemas.notes import NoteCreate, NoteOut
 from app.services.notes_services import create_note, list_notes, search_notes
 from app.integrations.http_client import get_httpx_client
+from app.core.cache import cached
+from app.core.pagination import PageParams, paginate
 
 # UNUSED (demo): unused import
 from datetime import datetime  # UNUSED (demo)
@@ -17,8 +19,11 @@ def create(payload: NoteCreate, db: Session = Depends(get_db)):
     return create_note(db, payload)
 
 @router.get("", response_model=list[NoteOut], dependencies=[Depends(require_api_key)])
-def list_all(db: Session = Depends(get_db)):
-    return list_notes(db)
+@cached("notes", ttl=60)
+def list_all(db: Session = Depends(get_db), page: int = 1, size: int = 20):
+    all_notes = list_notes(db)
+    result = paginate(all_notes, PageParams(page=page, size=size))
+    return result.items
 
 @router.get("/search", response_model=list[NoteOut], dependencies=[Depends(require_api_key)])
 def search(

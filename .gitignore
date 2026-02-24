@@ -2,3 +2,8 @@ venv
 .DS_store
 *.egg-info
 .skylos
+node_modules
+web/dist
+__pycache__
+package-lock.json
+.venv

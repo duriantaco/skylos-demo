@@ -7,9 +7,13 @@ from app.services.export_service import run_export  # uses dynamic dispatch
 from app.api.handlers import dispatch  # uses string-based handler map
 from app.core.registry import get_handler  # uses __init_subclass__ registry
 from app.services.report_service import search  # active; v1/v2 are dead
+from app.core.middleware import RequestLoggingMiddleware
+from app.core.auth import hash_api_key
+from app.core.pagination import PageParams
 
 # UNUSED: not used anywhere in runtime
 APP_DISPLAY_NAME = "Skylos Demo API"  # UNUSED
+
 
 def create_app() -> FastAPI:
     configure_logging()
@@ -18,6 +22,10 @@ def create_app() -> FastAPI:
         title="Skylos Demo API",
         version="0.1.1",
     )
+
+    app.add_middleware(RequestLoggingMiddleware)
+    app.state.api_key_hasher = hash_api_key
+    app.state.default_page_params = PageParams
 
     app.include_router(api_router)
 

@@ -3,9 +3,16 @@ from sqlalchemy.orm import Session
 
 from app.db import crud
 from app.schemas.notes import NoteCreate
+from app.core.decorators import retry, log_execution
+from app.core.events import EventBus
 
+
+@retry(max_attempts=2, delay=0.05)
+@log_execution
 def create_note(db: Session, payload: NoteCreate):
-    return crud.create_note(db, payload)
+    result = crud.create_note(db, payload)
+    EventBus.emit("note_created", title=payload.title)
+    return result
 
 def list_notes(db: Session):
     return crud.list_notes(db)

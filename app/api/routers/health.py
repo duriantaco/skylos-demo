@@ -1,10 +1,14 @@
 # app/api/routers/health.py
 from fastapi import APIRouter, Query
 
+from app.core.feature_flags import is_enabled
+
 router = APIRouter()
 
 @router.get("/health")
 def health():
+    if is_enabled("v2_health"):
+        return {"ok": True, "version": 2}
     return {"ok": True}
 
 @router.get("/debug/read-file")

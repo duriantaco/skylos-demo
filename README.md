@@ -1,9 +1,11 @@
 ## Benchmark: Skylos Dead-Code Detection (Static + Hybrid LLM Mode)
 
-This benchmark evaluates **Skylos** dead-code detection on a realistic FastAPI-style Python repo with:
-- **Ground truth validation**: Known unused vs. actually-used symbols
-- **Dynamic dispatch patterns**: getattr(), globals(), __init_subclass__ usage that tricks static analysis
+This benchmark evaluates **Skylos** dead-code detection on a **polyglot monorepo** containing both Python and TypeScript, with:
+- **Two languages**: Python (FastAPI) + TypeScript (Express) with identical architecture
+- **150 ground-truth dead-code items**: 110 Python + 40 TypeScript (Python expanded with enterprise patterns, tests, and services)
+- **22 dynamic dispatch traps**: 14 Python (getattr, globals, \_\_init\_subclass\_\_, @task registry, @on() events) + 8 TypeScript (bracket notation, Record map, decorators)
 - **Hybrid LLM verification**: Optional LLM layer to filter false positives from static analysis
+- **Fair comparison**: Vulture evaluated against Python-only ground truth (it can't analyze TS)
 
 ### Key Results Summary
 
@@ -33,6 +35,8 @@ This benchmark evaluates **Skylos** dead-code detection on a realistic FastAPI-s
 ## What are we measuring?
 
 We're measuring **dead-code detection quality** at different **confidence thresholds** and **verification modes**.
+
+The Python side includes enterprise patterns: middleware, decorators, ABC/strategy, background tasks, caching, feature flags, custom exceptions, events, pagination, auth, plugins, tests, notifications, and audit — totaling 110 dead-code items across 55 Python files.
 
 ### Confidence Thresholds
 
@@ -84,6 +88,9 @@ High recall = misses less dead code.
 ```bash
 # Install Skylos
 pip install skylos
+
+# Install TypeScript dependencies
+cd web && npm install && cd ..
 
 # For hybrid mode, set your API key
 export OPENAI_API_KEY=your_key_here
@@ -140,6 +147,7 @@ To replicate the exact numbers shown in the benchmark tables:
    git clone <repo-url>
    cd skylos-demo
    pip install skylos
+   cd web && npm install && cd ..
    ```
 
 2. **Set your LLM API key:**
@@ -343,23 +351,24 @@ skylos . --confidence 60
 
 ## What is being tested (and why we think it's realistic)
 
-This repo is structured like a real service:
+This repo is structured like a real polyglot monorepo with two apps:
 
-- FastAPI app entrypoint + router registration
-- Layered architecture: routers -> services -> db/crud/models -> schemas
-- Typical "real repo" habits:
-  - helper functions that are left around but never called
-  - unused imports after refactors
-  - unused schemas/models from feature churn
-  - integration code (webhooks, slack/github clients) with a mix of used + unused helpers
+- **Python** (`app/`): FastAPI app with SQLAlchemy, Pydantic, and httpx integrations
+- **TypeScript** (`web/`): Express app mirroring the same architecture with TS-specific patterns
+
+Both apps share the same layered architecture: routes -> services -> db/crud/models -> schemas, with:
+- helper functions that are left around but never called
+- unused imports after refactors
+- unused schemas/models from feature churn
+- integration code (webhooks, slack/github clients) with a mix of used + unused helpers
 
 We are explicitly testing:
 
 ### 1) Basic dead-code detection
-- Unused imports (7 items)
-- Unused private helpers (`_normalize_query`, `_row_to_dict`, etc.)
-- Unused constants (`DEFAULT_PAGE_SIZE`, `APP_DISPLAY_NAME`, etc.)
-- Unused classes and schemas (`DemoError`, `Tag`, `NoteInternal`)
+- Unused imports (14 items: 8 Python + 6 TypeScript)
+- Unused private helpers (`_normalize_query`/`_normalizeQuery`, `_row_to_dict`/`_rowToObject`, `_build_search_query`, etc.)
+- Unused constants (`DEFAULT_PAGE_SIZE`, `APP_DISPLAY_NAME`, `MAX_UPLOAD_SIZE`, `AUDIT_RETENTION_DAYS`, etc.)
+- Unused classes, interfaces, and schemas (`DemoError`, `Tag`, `NoteInternal`, `NotePatch`, `Comment`, `Attachment`, etc.)
 
 **Why it matters:** This is the bread-and-butter of dead-code tools.
 
@@ -393,11 +402,12 @@ FastAPI endpoints can be "used" even if nothing directly calls them:
 
 ### 4) **Dynamic dispatch patterns**
 
-**Pattern 4a: getattr() dispatch** (3 test cases)
+#### Python (14 test cases)
+
+**Pattern 4a: getattr() dispatch** (6 test cases — export\_service + notification\_service)
 ```python
 def export_csv(data): ...  # 0 static references
 def export_json(data): ...  # 0 static references
-def export_xml(data): ...   # 0 static references
 
 def run_export(fmt):
     handler = getattr(sys.modules[__name__], f"export_{fmt}")
@@ -407,8 +417,6 @@ def run_export(fmt):
 **Pattern 4b: globals() dict access** (3 test cases)
 ```python
 def handle_create(payload): ...  # 0 static references
-def handle_update(payload): ...  # 0 static references
-def handle_delete(payload): ...  # 0 static references
 
 HANDLER_MAP = {
     action: globals()[f"handle_{action}"]
@@ -426,15 +434,54 @@ class EmailHandler(RegisteredHandler):
     name = "email"
 ```
 
-**Why it matters:** Static analysis sees 0 references → flags as dead (false positive). Dynamic dispatch is common in:
-- Plugin systems and registries
-- Format handlers and exporters
-- Framework hooks and event handlers
-- Command dispatchers and routers
+**Pattern 4d: @task decorator registry** (1 test case)
+```python
+@task("send_welcome_email")
+def send_welcome_email(email=""):  # registered via decorator
+    print(f"Sending welcome email to {email}")
+```
+
+**Pattern 4e: @on() event handler registration** (2 test cases)
+```python
+@EventBus.on("note_created")
+def on_note_created_log(**kwargs):  # called via EventBus.emit()
+    print(f"note_created: {kwargs.get('title')}")
+```
+
+#### TypeScript (8 test cases)
+
+**Pattern 4d: Bracket notation on module exports** (3 test cases)
+```typescript
+export function exportCsv(data: unknown[]): string { ... }
+export function exportJson(data: unknown[]): string { ... }
+
+import * as self from "./exportService";
+export function runExport(data: unknown[], fmt: string): string {
+  const handler = (self as Record<string, unknown>)[handlerName];
+  return handler(data);  // called dynamically
+}
+```
+
+**Pattern 4e: Record<string, Function> map** (3 test cases)
+```typescript
+export function handleCreate(payload): Record<string, unknown> { ... }
+
+const HANDLER_MAP: Record<string, Function> = {
+  create: handleCreate, update: handleUpdate, delete: handleDelete,
+};
+```
+
+**Pattern 4f: Decorator-based registry** (2 test cases)
+```typescript
+@RegisterHandler("email")
+export class EmailHandler extends RegisteredHandler { ... }
+```
+
+**Why it matters:** Static analysis sees 0 references → flags as dead (false positive). Dynamic dispatch is common in both Python and TypeScript codebases.
 
 **Expected behavior:**
-- **Static-only: 8/8 false positives** (flags all as dead)
-- **Hybrid LLM: 0/8 false positives** (correctly identifies dynamic usage)
+- **Static-only: 22/22 false positives** (flags all as dead)
+- **Hybrid LLM: 0/22 false positives** (correctly identifies dynamic usage)
 
 This is the **key differentiator** for hybrid mode.
 
@@ -479,7 +526,7 @@ We normalize this so we are measuring detection quality, not string formatting.
 This benchmark is "good" because it is:
 
 ### Ground truthed
-We don't just eyeball outputs; we compare against a known list of unused and used items (33 expected unused, 14+ actually used).
+We don't just eyeball outputs; we compare against a known list of unused and used items (150 expected unused across 2 languages, 130+ actually used).
 
 ### Mixed difficulty
 It contains:
@@ -488,7 +535,10 @@ It contains:
 - **Hard cases** (framework wiring, alias imports, name collisions)
 - **Very hard cases** (dynamic dispatch patterns that fool static analysis)
 
-The **dynamic dispatch patterns** (8 test cases) are the key differentiator that tests whether tools can handle real-world Python patterns.
+The **dynamic dispatch patterns** (22 test cases across Python + TypeScript) are the key differentiator that tests whether tools can handle real-world polyglot patterns.
+
+### Multi-language
+Tests that the tool works across Python and TypeScript with equivalent detection quality. Vulture is Python-only and serves as a single-language baseline.
 
 ### Fair comparison
 We normalize tool outputs to avoid penalizing one tool for naming conventions (e.g. alias reporting).
@@ -518,7 +568,7 @@ If `ACTUALLY_USED` includes things that are not actually referenced anywhere (e.
 
 ### C) We do not count non-app files unintentionally
 If the tool scans `benchmark.py` itself, "Other Findings" will include benchmark helpers and dilute the demo.
-**Fix:** run tools on `app/` only.
+**Fix:** run tools on `app/` and `tests/` only.
 
 ### D) We will evolve the test as Skylos improves
 Once Skylos handles these patterns well, we can add additional realistic scenarios:
@@ -533,10 +583,11 @@ Once Skylos handles these patterns well, we can add additional realistic scenari
 
 This benchmark evaluates Skylos dead-code detection by:
 - **Running static-only and hybrid LLM modes** at different confidence thresholds
-- **Testing dynamic dispatch patterns** (getattr, globals, __init_subclass__) that fool static analysis
-- **Measuring TP/FP/FN** against curated ground truth (33 expected unused, 14+ actually used)
-- **Comparing against Vulture** baseline tool
-- **Reporting precision/recall/F1** plus detailed per-item results
+- **Testing across Python + TypeScript** with identical architecture and dead-code categories
+- **Testing 22 dynamic dispatch patterns** across both languages that fool static analysis
+- **Measuring TP/FP/FN** against curated ground truth (150 expected unused, 130+ actually used)
+- **Comparing against Vulture** (Python-only baseline)
+- **Reporting precision/recall/F1** plus detailed per-item and per-language results
 
 ### Key Findings
 
@@ -562,49 +613,126 @@ This repo intentionally contains unused imports / functions / variables / classe
 
 > **Warning:** The security issues below are intentionally unsafe for benchmarking. Do **NOT** deploy this repo.
 
-
 ### Unused Imports
+
+**Python (8)**
 - `app/logging.py`: `import math`
 - `app/api/routers/notes.py`: `from datetime import datetime`
 - `app/api/deps.py`: `from app.config import get_settings`
+- `app/api/deps.py`: `Session`
 - `app/api/routers/reports.py`: `from app.utils.formatters import format_money as fmt_money`
-- `app/integrations/bootstrap.py", "flask"`
-- `app/integrations/bootstrap.py", "sys"`
-- `app/integrations/slack.py", "Tuple"`
+- `app/integrations/bootstrap.py`: `flask`
+- `app/integrations/bootstrap.py`: `sys`
+- `app/integrations/slack.py`: `Tuple`
+
+**TypeScript (6)**
+- `web/src/logging.ts`: `import path`
+- `web/src/routes/notes.ts`: `import { URL }`
+- `web/src/middleware/auth.ts`: `import { loadConfig }`
+- `web/src/routes/reports.ts`: `import { formatMoney }`
+- `web/src/integrations/bootstrap.ts`: `import express`
+- `web/src/integrations/slack.ts`: `import { EventEmitter }`
 
 ### Unused Functions
-- `app/config.py`: `_is_prod()`
+
+**Python (63)**
+- `app/config.py`: `_is_prod()`, `_parse_cors_origins()`
 - `app/api/deps.py`: `get_actor_from_headers()`
 - `app/api/routers/notes.py`: `_normalize_query()`
-- `app/db/session.py`: `_drop_all()`
-- `app/db/crud.py`: `_row_to_dict()`
-- `app/services/notes_services.py`: `_validate_title()`
-- `app/utils/ids.py`: `slugify()`
+- `app/api/routers/reports.py`: `generate_report()`
+- `app/db/session.py`: `_drop_all()`, `get_engine_info()`, `_reset_sequences()`
+- `app/db/crud.py`: `_row_to_dict()`, `bulk_create_notes()`, `_build_search_query()`
+- `app/services/notes_services.py`: `_validate_title()`, `normalize_and_score_query()`
+- `app/utils/ids.py`: `slugify()`, `new_request_id()`, `weak_token()`
 - `app/utils/formatters.py`: `format_money()`
-
-# Method-name collision / trap case (intentionally dead)
-- `app/services/payment_services.py`: `process`
-
-# Integrations (wired in; these remain unused)
+- `app/services/payment_services.py`: `process()`, `run_payment()` (method-name collision trap)
+- `app/core/errors.py`: `not_found()`
 - `app/integrations/http_client.py`: `request_text()`
 - `app/integrations/webhook_signing.py`: `verify_hmac_sha256_prefixed()`
 - `app/integrations/slack.py`: `build_finding_blocks()`
 - `app/integrations/github.py`: `find_issue_by_title()`
-- `app/integrations/metrics.py`: `timed_request()`
+- `app/integrations/metrics.py`: `timed_request()`, `snapshot_metrics()`, `add_tags()`
+- `app/services/report_service.py`: `_build_header()`, `_build_footer()`, `generate_report_v1()`, `_search_v2()`
+- `app/core/middleware.py`: `generate_correlation_id()`
+- `app/core/decorators.py`: `validate_input()`, `deprecate()`
+- `app/services/tasks.py`: `generate_daily_report()`, `sync_external_contacts()`, `cleanup_expired_sessions()`
+- `app/core/cache.py`: `invalidate_cache_for()`
+- `app/core/feature_flags.py`: `get_all_flags()`, `_evaluate_flag_with_context()`
+- `app/core/events.py`: `on_note_deleted_cleanup()`, `on_user_signed_up_welcome()`
+- `app/core/pagination.py`: `apply_filters()`
+- `app/core/auth.py`: `validate_bearer_token()`, `generate_api_token()`, `check_ip_allowlist()`
+- `app/core/plugins.py`: `list_plugins()`, `unload_plugin()`
+- `app/services/notification_service.py`: `send_bulk_notifications()`, `schedule_notification()`, `_render_template()`
+- `app/services/audit_service.py`: `query_audit_log()`, `_redact_sensitive_fields()`, `export_audit_csv()`
+- `tests/conftest.py`: `mock_redis()`, `admin_user()`
+- `tests/factories.py`: `random_email()`
+- `tests/helpers.py`: `assert_paginated_response()`, `wait_for_event()`, `mock_external_service()`
+- `tests/test_notes.py`: `test_create_note_with_tags()`, `test_bulk_import_notes()`, `_seed_notes()`
+
+**TypeScript (24)**
+- `web/src/config.ts`: `_isProd()`
+- `web/src/middleware/auth.ts`: `getActorFromHeaders()`
+- `web/src/routes/notes.ts`: `_normalizeQuery()`
+- `web/src/db/session.ts`: `_dropAll()`
+- `web/src/db/crud.ts`: `_rowToObject()`
+- `web/src/services/noteService.ts`: `_validateTitle()`
+- `web/src/utils/ids.ts`: `slugify()`
+- `web/src/utils/formatters.ts`: `formatMoney()`
+- `web/src/services/paymentService.ts`: `process` (same-name method trap), `runPayment()`
+- `web/src/core/errors.ts`: `notFound()`
+- `web/src/integrations/httpClient.ts`: `requestText()`, `getHttpClient()`
+- `web/src/integrations/webhookSigning.ts`: `verifyHmacSha256Prefixed()`
+- `web/src/integrations/slack.ts`: `buildFindingBlocks()`
+- `web/src/integrations/github.ts`: `authHeaders()`, `findIssueByTitle()`
+- `web/src/integrations/metrics.ts`: `snapshotMetrics()`, `timedRequest()`
+- `web/src/services/reportService.ts`: `_buildHeader()`, `_buildFooter()`, `generateReportV1()`, `_searchV2()`
 
 ### Unused Variables / Constants
-- `app/main.py`: `APP_DISPLAY_NAME`
-- `app/db/crud.py`: `DEFAULT_PAGE_SIZE`
-- `app/utils/ids.py`: `DEFAULT_REQUEST_ID`
 
-# Integrations (wired in; these remain unused)
+**Python (17)**
+- `app/main.py`: `APP_DISPLAY_NAME`
+- `app/config.py`: `MAX_UPLOAD_SIZE`
+- `app/db/crud.py`: `DEFAULT_PAGE_SIZE`
+- `app/db/session.py`: `DB_POOL_SIZE`
+- `app/utils/ids.py`: `DEFAULT_REQUEST_ID`
 - `app/integrations/http_client.py`: `DEFAULT_HEADERS`
 - `app/integrations/metrics.py`: `_queue_depth`
+- `app/services/tasks.py`: `TASK_PRIORITY_HIGH`, `TASK_PRIORITY_LOW`
+- `app/core/feature_flags.py`: `FLAG_ADMIN_ENDPOINT`
+- `app/core/events.py`: `EVENT_NOTE_ARCHIVED`
+- `app/core/auth.py`: `ROLE_VIEWER`, `TOKEN_ALGORITHM`
+- `app/services/notification_service.py`: `MAX_BATCH_SIZE`
+- `app/services/audit_service.py`: `AUDIT_RETENTION_DAYS`
+- `tests/conftest.py`: `TEST_TIMEOUT`
+- `tests/helpers.py`: `SLOW_TEST_THRESHOLD`
+
+**TypeScript (5)**
+- `web/src/index.ts`: `APP_DISPLAY_NAME`
+- `web/src/db/crud.ts`: `DEFAULT_PAGE_SIZE`
+- `web/src/utils/ids.ts`: `DEFAULT_REQUEST_ID`
+- `web/src/integrations/httpClient.ts`: `DEFAULT_HEADERS`
+- `web/src/integrations/metrics.ts`: `_queueDepth`
 
 ### Unused Classes / Models / Schemas
+
+**Python (22)**
 - `app/core/errors.py`: `class DemoError(Exception)`
-- `app/db/models.py`: `class Tag(Base)`
-- `app/schemas/notes.py`: `class NoteInternal(BaseModel)`
+- `app/db/models.py`: `class Tag(Base)`, `class Comment(Base)`, `class Attachment(Base)`
+- `app/schemas/notes.py`: `class NoteInternal(BaseModel)`, `class NotePatch(BaseModel)`, `class NoteSearch(BaseModel)`
+- `app/services/payment_services.py`: `class PayPal`
+- `app/core/middleware.py`: `class CorrelationIdMiddleware`, `class RateLimitMiddleware`
+- `app/core/base.py`: `class MongoNoteRepository`, `class PagerDutyNotifier`
+- `app/core/cache.py`: `class RedisCache`
+- `app/core/exceptions.py`: `class AuthenticationError`, `class AuthorizationError`, `class RateLimitError`, `class ExternalServiceError`
+- `app/core/pagination.py`: `class CursorParams`, `class CursorResult`
+- `app/services/notification_service.py`: `class NotificationLog`
+- `tests/factories.py`: `class UserFactory`, `class TagFactory`
+
+**TypeScript (6)**
+- `web/src/core/errors.ts`: `class DemoError`
+- `web/src/db/models.ts`: `interface Tag`
+- `web/src/schemas/notes.ts`: `interface NoteInternal`
+- `web/src/types/index.ts`: `interface AppConfig`, `interface RequestContext`, `interface PaginationParams`
 
 ### Security Findings (Intentionally Vulnerable for Demo)
 

@@ -21,7 +21,6 @@ def _search_v2(query: str) -> list:
 
 
 def search(query: str) -> list:
-    """Active search function. The v2 branch is disabled."""
     if False:  # was: if ENABLE_V2_SEARCH
         return _search_v2(query)
     return [f"basic-result-for-{query}"]
