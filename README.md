@@ -1,55 +1,63 @@
-## Benchmark: Skylos Dead-Code Detection (Static + Hybrid LLM Mode)
+## Benchmark: Skylos Dead-Code Detection
 
 This benchmark evaluates **Skylos** dead-code detection on a **polyglot monorepo** containing both Python and TypeScript, with:
 - **Two languages**: Python (FastAPI) + TypeScript (Express) with identical architecture
-- **150 ground-truth dead-code items**: 110 Python + 40 TypeScript (Python expanded with enterprise patterns, tests, and services)
+- **150 ground-truth dead-code items**: 110 Python + 40 TypeScript
 - **22 dynamic dispatch traps**: 14 Python (getattr, globals, \_\_init\_subclass\_\_, @task registry, @on() events) + 8 TypeScript (bracket notation, Record map, decorators)
-- **Hybrid LLM verification**: Optional LLM layer to filter false positives from static analysis
-- **Fair comparison**: Vulture evaluated against Python-only ground truth (it can't analyze TS)
+- **Fair comparison**: Skylos vs Vulture (Python), Skylos vs Knip (TypeScript)
 
-### Key Results Summary
+### Performance Results (Skylos v3.4.3)
 
-| Configuration | Precision | Recall | F1 Score | Speed | FP Count | Dynamic Dispatch |
-|---------------|-----------|--------|----------|-------|----------|------------------|
-| **Skylos Hybrid High-Conf**   **67.4%** | **93.9%** | **78.5%** | 419s | **2** | **8/8** |
-| Skylos Static (conf=10) | 52.5% | 93.9% | 67.4% | **2s** | 13 | 0/8 |
-| Skylos Static (conf=60) | 72.7% | 72.7% | 72.7% | 2s | 9 | 0/8 |
-| Vulture | 38.5% | 75.8% | 50.8% | 0.1s | 14 | 0/8 |
+#### Python — Static (110 ground truth items, Skylos vs Vulture)
 
-**Best Configuration: Skylos Hybrid High-Confidence (conf=10)**
-- **+14.9% precision** vs static-only (52.5% → 67.4%)
-- **Same recall** (93.9% - no compromise)
-- **+27.7% F1 score** vs static-only
-- **8/8 dynamic dispatch patterns caught** (vs 0/8 static-only)
-- **84.6% false positive reduction** (13 -> 2)
+| Metric | Skylos (conf=20) | Skylos (conf=80) | Vulture |
+|--------|:----------------:|:----------------:|:-------:|
+| **True Positives** | 103 | 72 | 96 |
+| **False Positives** | 15 | 15 | 37 |
+| **False Negatives** | 7 | 38 | 14 |
+| **Precision** | **79.2%** | 76.6% | 55.8% |
+| **Recall** | **93.6%** | 65.5% | 87.3% |
+| **Speed** | ~2s | ~3.5s | ~0.5s |
 
-**Trade-off:** Hybrid mode is ~200x slower (2s -> 419s) but eliminates 84.6% of false positives with no recall cost.
+#### Python — Hybrid LLM (conf=10, static + LLM verification)
 
-### Comparison Modes
+| Metric | Static | Hybrid | High-Conf (static∩llm) | Vulture |
+|--------|:------:|:------:|:----------------------:|:-------:|
+| **True Positives** | 103 | 102 | 102 | 96 |
+| **False Positives** | 15 | 15 | **13** | 37 |
+| **False Negatives** | 7 | 8 | 8 | 14 |
+| **Precision** | 79.2% | 76.7% | **78.5%** | 55.8% |
+| **Recall** | **93.6%** | 92.7% | 92.7% | 87.3% |
+| **Speed** | ~1.2s | ~443s | *(same run)* | ~0.3s |
 
-1. **Skylos Static**: Traditional static analysis only
-2. **Skylos Hybrid**: Static analysis + LLM verification layer
-3. **Skylos High-Confidence**: Hybrid mode, showing only LLM-confirmed findings (static∩llm)
-4. **Vulture**: Baseline comparison tool
+#### TypeScript (40 ground truth items, Skylos vs Knip)
+
+| Metric | Skylos (conf=20) | Skylos (conf=80) | Knip |
+|--------|:----------------:|:----------------:|:----:|
+| **True Positives** | 34 | 34 | 31 |
+| **False Positives** | 3 | 3 | 14 |
+| **False Negatives** | 6 | 6 | 9 |
+| **Precision** | **81.0%** | **81.0%** | 72.1% |
+| **Recall** | **85.0%** | **85.0%** | 77.5% |
+| **Speed** | ~25s | ~11s | ~4s |
+
+**Key takeaways:**
+- **Python conf=20** is the sweet spot: +23.4% precision over Vulture, +6.3% recall, and 60% fewer false positives (15 vs 37)
+- **Hybrid High-Conf** eliminates 2 more FPs (15 → 13) with minimal recall cost (93.6% → 92.7%)
+- **Dynamic dispatch**: Skylos v3.4.3 catches all 14 Python dynamic dispatch patterns in static mode (0/14 FPs vs Vulture's 14/14 FPs)
+- **TypeScript**: Skylos has +8.9% precision and +7.5% recall over Knip, with 78% fewer false positives (3 vs 14)
+- TS confidence threshold has no effect (all TS findings are high-confidence)
 
 ## What are we measuring?
 
-We're measuring **dead-code detection quality** at different **confidence thresholds** and **verification modes**.
+We're measuring **dead-code detection quality** at different **confidence thresholds**.
 
 The Python side includes enterprise patterns: middleware, decorators, ABC/strategy, background tasks, caching, feature flags, custom exceptions, events, pagination, auth, plugins, tests, notifications, and audit — totaling 110 dead-code items across 55 Python files.
 
 ### Confidence Thresholds
 
-- **conf=10** (aggressive): Reports all findings including low-confidence ones (maximizes recall)
 - **conf=20** (balanced): Filters out very-low-confidence findings
-- **conf=60** (conservative): Only high-confidence findings (minimizes false positives)
-
-### Verification Modes
-
-- **Static-only**: Fast, pure static analysis (no LLM calls)
-- **Hybrid**: Static + LLM verification of each finding (~200x slower, but filters FPs)
-- **High-Confidence (static∩llm)**: Only findings confirmed by BOTH static and LLM
-
+- **conf=80** (conservative): Only high-confidence findings (minimizes false positives)
 
 ### True Positives (TP)
 Items in `EXPECTED_UNUSED` that the tool flags as unused.
@@ -89,235 +97,62 @@ High recall = misses less dead code.
 # Install Skylos
 pip install skylos
 
-# Install TypeScript dependencies
-cd web && npm install && cd ..
-
-# For hybrid mode, set your API key
-export OPENAI_API_KEY=your_key_here
-# or any other LLM provider supported by litellm
+# Install comparison tools
+pip install vulture
+npm install -g knip  # or: cd web && npm install && cd ..
 ```
-
-### Command-Line Options
-
-The `benchmark_hybrid.py` script supports different confidence levels:
-
-```bash
-python benchmark_hybrid.py --help
-
-# Default (confidence=10, with LLM)
-python benchmark_hybrid.py
-
-# Test different confidence levels
-python benchmark_hybrid.py --confidence 10   # Aggressive (max recall)
-python benchmark_hybrid.py --confidence 20   # Balanced
-python benchmark_hybrid.py --confidence 60   # Conservative (high precision)
-
-# Static mode
-python benchmark_hybrid.py --no-llm
-```
-
-### How the Benchmark Results Were Generated
-
-All results in this README were generated using:
-
-```bash
-cd skylos-demo
-export OPENAI_API_KEY=your_key_here
-
-# Confidence=10 results
-python benchmark_hybrid.py --confidence 10
-
-# Confidence=20 results
-python benchmark_hybrid.py --confidence 20
-
-# Confidence=60 results
-python benchmark_hybrid.py --confidence 60
-```
-
-**Timing:**
-- Static-only: ~2 seconds
-- Hybrid mode: ~7 minutes (makes ~40 LLM API calls, one per zero-reference finding)
 
 ### Reproducing the Results
 
-To replicate the exact numbers shown in the benchmark tables:
+```bash
+git clone <repo-url>
+cd skylos-demo
+pip install skylos vulture
+cd web && npm install && cd ..
 
-1. **Clone the repo and install dependencies:**
-   ```bash
-   git clone <repo-url>
-   cd skylos-demo
-   pip install skylos
-   cd web && npm install && cd ..
-   ```
+# Python static benchmark (Skylos vs Vulture, conf=20)
+python benchmark.py
 
-2. **Set your LLM API key:**
-   ```bash
-   export OPENAI_API_KEY=your_key_here
-   ```
+# Python hybrid benchmark (Skylos static + LLM vs Vulture, conf=10)
+export OPENAI_API_KEY=your_key_here  # or any litellm-supported provider
+python benchmark_hybrid.py
 
-3. **Run the benchmark at each confidence level:**
-   ```bash
-   # This produces the "Confidence = 10" table
-   python benchmark_hybrid.py --confidence 10
+# TypeScript benchmark (Skylos vs Knip, conf=80)
+python benchmark_ts.py
+```
 
-   # This produces the "Confidence = 60" table
-   python benchmark_hybrid.py --confidence 60
-   ```
-
-4. **Expected output:**
-   - Benchmark results table (TP/FP/FN, Precision/Recall)
-   - LLM impact analysis (FPs caught by LLM)
-   - Detailed per-item comparison
-   - Dynamic dispatch detection results (8/8 patterns)
+To test at different confidence levels, change `SKYLOS_CONFIDENCE` at the top of each script.
 
 ---
 
-## Benchmark Results
+## Analysis: The Dynamic Dispatch Problem
 
-### Confidence = 10 (Aggressive Mode - Maximize Recall)
+Static analysis traditionally struggles with patterns where functions are called dynamically at runtime. Vulture and Knip generate false positives on all such patterns. Skylos v3.4.3 handles them natively in static mode (0/14 Python FPs, 0/8 TypeScript FPs).
 
-| Metric | Skylos Static | Skylos Hybrid | Skylos High-Conf (static∩llm) | Vulture |
-|--------|-------------:|-------------:|------------------------------:|--------:|
-| **True Positives** | 31 | 31 | 31 | 25 |
-| **False Positives** | 13 | 13 | **2** ✅ | 14 |
-| **False Negatives** | 2 | 2 | 2 | 8 |
-| **Precision** | 52.5% | 52.5% | **67.4%** ✅ | 38.5% |
-| **Recall** | 93.9% | 93.9% | 93.9% | 75.8% |
-| **F1 Score** | 67.4% | 67.4% | **78.5%** | 50.8% |
-| **Speed** | 2.1s | 419s | *(same run)* | 0.1s |
-
-**Key Insight:** LLM verification eliminates **84.6% of false positives** (13 → 2) with **no recall cost**, achieving 67.4% precision vs 52.5% for static-only.
-
-**Dynamic Dispatch Detection:**
-- Static: 0/8 patterns caught (100% false positives)
-- Hybrid High-Conf: **8/8 patterns caught**
-
-### Confidence = 20 (Balanced Mode)
-
-| Metric | Skylos Static | Skylos Hybrid | Skylos High-Conf (static∩llm) | Vulture |
-|--------|-------------:|-------------:|------------------------------:|--------:|
-| **True Positives** | 31 | 31 | 31 | 25 |
-| **False Positives** | 13 | 13 | 2 | 14 |
-| **False Negatives** | 2 | 2 | 2 | 8 |
-| **Precision** | 52.5% | 52.5% | **67.4%** | 38.5% |
-| **Recall** | 93.9% | 93.9% | 93.9% | 75.8% |
-| **F1 Score** | 67.4% | 67.4% | **78.5%** | 50.8% |
-
-> **Note:** At conf=20, results are identical to conf=10 because all 33 expected unused items have confidence ≥10, and no additional findings fall in the 10-19 range.
-
-### Confidence = 60 (Conservative Mode)
-
-| Metric | Skylos Static | Skylos Hybrid | Skylos High-Conf (static∩llm) | Vulture |
-|--------|-------------:|-------------:|------------------------------:|--------:|
-| **True Positives** | 24 | 24 | 24 | 24 |
-| **False Positives** | 9 | 9 | 2 | 14 |
-| **False Negatives** | 9 | 9 | 9 | 9 |
-| **Precision** | 72.7% | 72.7% | **92.3%** | 63.2% |
-| **Recall** | 72.7% | 72.7% | 72.7% | 72.7% |
-| **F1 Score** | 72.7% | 72.7% | **81.4%** | 67.6% |
-
-**Trade-off:** Higher threshold improves baseline precision but sacrifices 21.2% recall (missing 7 low-confidence dead code items).
-
----
-
-## Analysis: Why Hybrid Mode Improves Precision
-
-### The Dynamic Dispatch Problem
-
-Static analysis struggles with patterns where functions are called/referenced dynamically at runtime:
-
-**Pattern 1: getattr() dispatch**
+**getattr() dispatch:**
 ```python
 def export_csv(data): ...  # Static sees 0 references
-def export_json(data): ...  # Static sees 0 references
-
 def run_export(fmt):
     handler = getattr(sys.modules[__name__], f"export_{fmt}")
     return handler(data)
 ```
 
-**Pattern 2: globals() dict access**
+**globals() dict access:**
 ```python
 def handle_create(payload): ...  # Static sees 0 references
-
-HANDLER_MAP = {
-    action: globals()[f"handle_{action}"] # Dynamic 
-    for action in ("create", "update", "delete")
-}
+HANDLER_MAP = {action: globals()[f"handle_{action}"] for action in ("create", "update", "delete")}
 ```
 
-**Pattern 3: __init_subclass__ registration**
+**__init_subclass__ registration:**
 ```python
 class Base:
     def __init_subclass__(cls):
         REGISTRY[cls.name] = cls
-
 class EmailHandler(Base):  # registered at import time
     name = "email"
 ```
 
-### How LLM Verification Catches These
-
-The LLM agent:
-1. Receives the full source file for each 0-reference finding
-2. Searches for dynamic dispatch patterns (getattr, globals, __init_subclass__)
-3. Marks findings as `FALSE_POSITIVE` if dynamic usage is detected
-4. Only `TRUE_POSITIVE` (confirmed dead) findings pass to high-confidence output
-
-**Result:** 8/8 dynamic dispatch patterns correctly identified as `FALSE_POSITIVE` → eliminated from high-confidence results.
-
----
-
-## When to Use Each Mode
-
-### Static-only Mode (Default)
-```bash
-skylos . --confidence 10
-```
-
-**Use when:**
-- You want fast results (1-2 seconds)
-- You're doing initial exploration or CI/CD checks
-- You can tolerate some false positives
-
-**Trade-offs:**
-- ✅ Fast (2s for this repo)
-- ✅ High recall (93.9%)
-- ❌ Lower precision (52.5%) - more false positives
-- ❌ Misses dynamic dispatch (8 false positives from patterns)
-
-### Hybrid Mode with High-Confidence Filter
-```bash
-skylos . --confidence 10 --llm --api-key YOUR_KEY
-```
-
-**Use when:**
-- Precision matters more than speed
-- You're generating reports for manual review
-- Your codebase uses dynamic dispatch patterns
-- You want to minimize false positive noise
-
-**Trade-offs:**
-- ✅ Better precision (67.4%) - fewer false positives
-- ✅ Same recall (93.9%)
-- ✅ Catches dynamic dispatch patterns
-- ❌ Slower (~200x: 419s for this repo)
-- ❌ Requires LLM API key and credits
-
-### Conservative Static Mode
-```bash
-skylos . --confidence 60
-```
-
-**Use when:**
-- You only want high-confidence findings
-- You're okay with missing some dead code
-- You want to minimize manual verification
-
-**Trade-offs:**
-- ✅ Higher precision (72.7%)
-- ❌ Lower recall (72.7%) - misses 7 low-confidence items
-- ❌ Still has false positives from dynamic dispatch
+This benchmark includes 22 such traps (14 Python + 8 TypeScript). Skylos correctly avoids false-flagging all of them; Vulture flags all 14 Python patterns as dead code.
 
 ---
 
@@ -374,7 +209,7 @@ We are explicitly testing:
 
 **Expected behavior:**
 - Static analysis should catch most of these (high recall)
-- LLM verification should confirm them (no false positives expected)
+- These are straightforward cases with no ambiguity
 
 ### 2) Cross-file dependency usage
 Symbols that are defined in one layer but used in another:
@@ -480,10 +315,8 @@ export class EmailHandler extends RegisteredHandler { ... }
 **Why it matters:** Static analysis sees 0 references → flags as dead (false positive). Dynamic dispatch is common in both Python and TypeScript codebases.
 
 **Expected behavior:**
-- **Static-only: 22/22 false positives** (flags all as dead)
-- **Hybrid LLM: 0/22 false positives** (correctly identifies dynamic usage)
-
-This is the **key differentiator** for hybrid mode.
+- **Vulture/Knip**: Flag all dynamic patterns as dead (false positives)
+- **Skylos v3.4.3**: Correctly identifies all 22 as used (0 false positives)
 
 ### 5) Name-collision / heuristic traps
 A deliberate example where method names collide (e.g. `process` exists on multiple classes):
@@ -508,7 +341,7 @@ def generate_report_v1(...):     # 0 references
 **Why it matters:** Helps find "chains" of dead code where helper functions are only used by unused code.
 
 **Expected behavior:**
-- **Current state:** Neither static nor LLM catches this (requires graph-based propagation)
+- **Current state:** No tool catches this (requires graph-based propagation)
 - **Future work:** Need transitive dead code analysis in static analyzer
 
 **Current false negatives:**
@@ -526,7 +359,7 @@ We normalize this so we are measuring detection quality, not string formatting.
 This benchmark is "good" because it is:
 
 ### Ground truthed
-We don't just eyeball outputs; we compare against a known list of unused and used items (150 expected unused across 2 languages, 130+ actually used).
+We don't just eyeball outputs; we compare against a known list of unused and used items (150 expected unused across 2 languages, 141 actually used).
 
 ### Mixed difficulty
 It contains:
@@ -550,7 +383,7 @@ The outputs directly map to:
 - what it incorrectly flagged (false positives)
 
 ### Tests advanced features
-The dynamic dispatch patterns specifically test **LLM-based verification**, which is a novel approach to reducing false positives while maintaining high recall.
+The dynamic dispatch patterns (22 test cases) specifically test how well tools handle real-world patterns that fool naive static analysis.
 
 ---
 
@@ -582,29 +415,18 @@ Once Skylos handles these patterns well, we can add additional realistic scenari
 ## Summary
 
 This benchmark evaluates Skylos dead-code detection by:
-- **Running static-only and hybrid LLM modes** at different confidence thresholds
 - **Testing across Python + TypeScript** with identical architecture and dead-code categories
 - **Testing 22 dynamic dispatch patterns** across both languages that fool static analysis
-- **Measuring TP/FP/FN** against curated ground truth (150 expected unused, 130+ actually used)
-- **Comparing against Vulture** (Python-only baseline)
-- **Reporting precision/recall/F1** plus detailed per-item and per-language results
+- **Measuring TP/FP/FN** against curated ground truth (150 expected unused, 141 actually used)
+- **Comparing against Vulture** (Python-only) and **Knip** (TypeScript-only)
+- **Reporting precision/recall** plus detailed per-item results
 
 ### Key Findings
 
-1. **Hybrid LLM verification works**: Eliminates 84.6% of false positives (13 → 2) with no recall cost
-2. **Dynamic dispatch is caught**: 8/8 patterns correctly identified by LLM (0/8 by static-only)
-3. **Speed trade-off**: Hybrid is ~200x slower but worth it for high-precision use cases
-4. **Remaining gaps**: 2 false negatives from transitive dead code (requires graph-based propagation)
-
-### Recommended Configuration
-
-**For CI/CD and fast iteration:**
-- `skylos . --confidence 10` (static-only)
-- 93.9% recall, 52.5% precision, 2s runtime
-
-**For high-quality reports:**
-- `skylos . --confidence 10 --llm` (hybrid with high-conf filter)
-- 93.9% recall, 67.4% precision, 419s runtime
+1. **Python**: Skylos has +23.4% precision over Vulture (79.2% vs 55.8%) and +6.3% recall (93.6% vs 87.3%) at conf=20
+2. **Dynamic dispatch**: Skylos v3.4.3 catches all 14 Python dynamic patterns in static mode (Vulture: 14/14 false positives)
+3. **TypeScript**: Skylos has +8.9% precision and +7.5% recall over Knip, with 78% fewer false positives (3 vs 14)
+4. **Hybrid LLM**: Eliminates 2 additional FPs with minimal recall cost (93.6% → 92.7%)
 
 
 ## Expected Skylos Findings (Demo)
@@ -669,7 +491,7 @@ This repo intentionally contains unused imports / functions / variables / classe
 - `tests/helpers.py`: `assert_paginated_response()`, `wait_for_event()`, `mock_external_service()`
 - `tests/test_notes.py`: `test_create_note_with_tags()`, `test_bulk_import_notes()`, `_seed_notes()`
 
-**TypeScript (24)**
+**TypeScript (23)**
 - `web/src/config.ts`: `_isProd()`
 - `web/src/middleware/auth.ts`: `getActorFromHeaders()`
 - `web/src/routes/notes.ts`: `_normalizeQuery()`
@@ -751,17 +573,16 @@ This repo intentionally contains unused imports / functions / variables / classe
 
 ### Known Limitations
 
-**Transitive Dead Code (2 false negatives):**
-- `_build_header` - only called by dead `generate_report_v1`
-- `_build_footer` - only called by dead `generate_report_v1`
+**Remaining false negatives (7 items Skylos misses at conf=20):**
+- 2 event handlers (`on_note_deleted_cleanup`, `on_user_signed_up_welcome`) — registered via `@on()` decorator
+- 2 test fixtures (`mock_redis`, `admin_user`) — pytest fixtures not called directly
+- 2 test functions (`test_create_note_with_tags`, `test_bulk_import_notes`) — disabled tests
+- 1 variable (`MAX_BATCH_SIZE`) — unused constant
 
-These require graph-based propagation analysis (work in progress).
-
-**Imported but Unused (2 remaining false positives):**
-- `search` - imported in main.py but never called
-- `new_request_id` - imported in main.py but never called
-
-The LLM cannot detect these without cross-file import analysis.
+**Remaining false positives (15 items Skylos incorrectly flags at conf=20):**
+- Cross-file references where the import chain is indirect (e.g. `search`, `dispatch` re-exported via `main.py`)
+- Abstract method implementations (`SqlNoteRepository`, `SlackNotifier`, `verify_api_key`)
+- Framework-registered items not yet recognized (`ValidationError`, `NotFoundError`)
 
 ---
 
@@ -772,6 +593,6 @@ If you use this benchmark in your research or tools, please cite:
 ```
 Skylos Dead-Code Detection Benchmark
 https://github.com/duriantaco/skylos-demo
-Ground-truthed evaluation of static and LLM-hybrid dead code detection
+Ground-truthed evaluation of static dead code detection
 ```
 
