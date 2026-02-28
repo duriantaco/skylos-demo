@@ -122,7 +122,7 @@ def _relativize(p: str) -> str:
     cwd = os.getcwd().replace("\\", "/")
     p = (p or "").replace("\\", "/")
     if p.startswith(cwd):
-        p = p[len(cwd):].lstrip("/")
+        p = p[len(cwd) :].lstrip("/")
     if p.startswith("./"):
         p = p[2:]
     return p
@@ -216,12 +216,10 @@ def compare_results():
     knip_direct = {(f, n) for f, n, _ in knip_findings if n != "*FILE*"}
     knip_dead_files = {f for f, n, _ in knip_findings if n == "*FILE*"}
 
-    # Skylos metrics
     s_tp = skylos_set & expected_set
     s_fp = skylos_set & used_set
     s_fn = expected_set - skylos_set
 
-    # Knip metrics
     k_tp = set()
     k_fp = set()
     k_fn = set()
@@ -245,12 +243,12 @@ def compare_results():
         s_rec = len(s_tp) / len(expected_set) * 100
     else:
         s_rec = 0
-    
+
     if knip_total:
         k_prec = len(k_tp) / knip_total * 100
     else:
-        k_prec = 0 
-    
+        k_prec = 0
+
     if expected_set:
         k_rec = len(k_tp) / len(expected_set) * 100
     else:
