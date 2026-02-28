@@ -8,6 +8,7 @@ TEST_TIMEOUT = 5  # UNUSED (demo)
 @pytest.fixture
 def db_session():
     from app.db.session import SessionLocal
+
     session = SessionLocal()
     try:
         yield session
@@ -21,12 +22,16 @@ def mock_redis():  # UNUSED (demo)
     class FakeRedis:
         def __init__(self):
             self._data: dict = {}
+
         def get(self, key):
             return self._data.get(key)
+
         def set(self, key, value, ex=None):
             self._data[key] = value
+
         def delete(self, key):
             self._data.pop(key, None)
+
     return FakeRedis()
 
 
@@ -34,6 +39,7 @@ def mock_redis():  # UNUSED (demo)
 def test_client():
     from starlette.testclient import TestClient
     from app.main import create_app
+
     app = create_app()
     with TestClient(app) as client:
         yield client

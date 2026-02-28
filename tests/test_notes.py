@@ -14,7 +14,9 @@ def test_create_note(test_client, api_key_header):
     assert data["body"] == "World"
 
 
-def _seed_notes(client, count: int = 3, api_key_header: dict | None = None) -> list[dict]:  # UNUSED (demo)
+def _seed_notes(
+    client, count: int = 3, api_key_header: dict | None = None
+) -> list[dict]:  # UNUSED (demo)
     headers = api_key_header or {"X-API-Key": "dev-key"}
     return [create_test_note(client, title=f"Note {i}", body=f"Body {i}") for i in range(count)]
 

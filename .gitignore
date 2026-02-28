@@ -7,3 +7,5 @@ web/dist
 __pycache__
 package-lock.json
 .venv
+real_life_examples
+.pytest_cache

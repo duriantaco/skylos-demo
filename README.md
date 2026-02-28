@@ -1,598 +1,268 @@
-## Benchmark: Skylos Dead-Code Detection
+<div align="center">
 
-This benchmark evaluates **Skylos** dead-code detection on a **polyglot monorepo** containing both Python and TypeScript, with:
-- **Two languages**: Python (FastAPI) + TypeScript (Express) with identical architecture
-- **150 ground-truth dead-code items**: 110 Python + 40 TypeScript
-- **22 dynamic dispatch traps**: 14 Python (getattr, globals, \_\_init\_subclass\_\_, @task registry, @on() events) + 8 TypeScript (bracket notation, Record map, decorators)
-- **Fair comparison**: Skylos vs Vulture (Python), Skylos vs Knip (TypeScript)
+# Skylos Benchmark Suite
 
-### Performance Results (Skylos v3.4.3)
+**Manually verified dead-code detection benchmarks across Python, TypeScript, and Go.**
 
-#### Python — Static (110 ground truth items, Skylos vs Vulture)
+11 real-world repos (370k+ combined stars) + 1 synthetic polyglot monorepo.
 
-| Metric | Skylos (conf=20) | Skylos (conf=80) | Vulture |
-|--------|:----------------:|:----------------:|:-------:|
-| **True Positives** | 103 | 72 | 96 |
-| **False Positives** | 15 | 15 | 37 |
-| **False Negatives** | 7 | 38 | 14 |
-| **Precision** | **79.2%** | 76.6% | 55.8% |
-| **Recall** | **93.6%** | 65.5% | 87.3% |
-| **Speed** | ~2s | ~3.5s | ~0.5s |
+Every finding hand-checked against source code. No automated labelling. No cherry-picking.
 
-#### Python — Hybrid LLM (conf=10, static + LLM verification)
-
-| Metric | Static | Hybrid | High-Conf (static∩llm) | Vulture |
-|--------|:------:|:------:|:----------------------:|:-------:|
-| **True Positives** | 103 | 102 | 102 | 96 |
-| **False Positives** | 15 | 15 | **13** | 37 |
-| **False Negatives** | 7 | 8 | 8 | 14 |
-| **Precision** | 79.2% | 76.7% | **78.5%** | 55.8% |
-| **Recall** | **93.6%** | 92.7% | 92.7% | 87.3% |
-| **Speed** | ~1.2s | ~443s | *(same run)* | ~0.3s |
-
-#### TypeScript (40 ground truth items, Skylos vs Knip)
-
-| Metric | Skylos (conf=20) | Skylos (conf=80) | Knip |
-|--------|:----------------:|:----------------:|:----:|
-| **True Positives** | 34 | 34 | 31 |
-| **False Positives** | 3 | 3 | 14 |
-| **False Negatives** | 6 | 6 | 9 |
-| **Precision** | **81.0%** | **81.0%** | 72.1% |
-| **Recall** | **85.0%** | **85.0%** | 77.5% |
-| **Speed** | ~25s | ~11s | ~4s |
-
-**Key takeaways:**
-- **Python conf=20** is the sweet spot: +23.4% precision over Vulture, +6.3% recall, and 60% fewer false positives (15 vs 37)
-- **Hybrid High-Conf** eliminates 2 more FPs (15 → 13) with minimal recall cost (93.6% → 92.7%)
-- **Dynamic dispatch**: Skylos v3.4.3 catches all 14 Python dynamic dispatch patterns in static mode (0/14 FPs vs Vulture's 14/14 FPs)
-- **TypeScript**: Skylos has +8.9% precision and +7.5% recall over Knip, with 78% fewer false positives (3 vs 14)
-- TS confidence threshold has no effect (all TS findings are high-confidence)
-
-## What are we measuring?
-
-We're measuring **dead-code detection quality** at different **confidence thresholds**.
-
-The Python side includes enterprise patterns: middleware, decorators, ABC/strategy, background tasks, caching, feature flags, custom exceptions, events, pagination, auth, plugins, tests, notifications, and audit — totaling 110 dead-code items across 55 Python files.
-
-### Confidence Thresholds
-
-- **conf=20** (balanced): Filters out very-low-confidence findings
-- **conf=80** (conservative): Only high-confidence findings (minimizes false positives)
-
-### True Positives (TP)
-Items in `EXPECTED_UNUSED` that the tool flags as unused.
-
-> “Correctly found dead code.”
-
-### False Negatives (FN)
-Items in `EXPECTED_UNUSED` that the tool **misses**.
-
-> “Dead code that the tool failed to detect.”
-
-### False Positives (FP)
-Items in `ACTUALLY_USED` that the tool flags as unused.
-
-> “Noise: things that are actually used but the tool says are dead.”
-
-### Precision
-How often a tool’s reported dead-code findings are correct.
-
-- `precision = TP / (TP + FP)`
-
-High precision = fewer false alarms.
-
-### Recall
-How much of the known dead code the tool successfully finds.
-
-- `recall = TP / (TP + FN)`
-
-High recall = misses less dead code.
+</div>
 
 ---
 
-## Running the Benchmark
+<div align="center">
 
-### Prerequisites
-```bash
-# Install Skylos
-pip install skylos
+### Headline Numbers
 
-# Install comparison tools
-pip install vulture
-npm install -g knip  # or: cd web && npm install && cd ..
-```
+| | Skylos | Vulture | Knip |
+|:---|:---:|:---:|:---:|
+| **Python recall** | **98.1%** | 84.6% | — |
+| **TypeScript recall** | **100%** | — | 100% |
+| **Python false positives** | **220** | 644 | — |
+| **TypeScript precision** | **36.4%** | — | 7.5% |
 
-### Reproducing the Results
+*9 Python repos (350k+ stars) / 1 TypeScript repo (7k stars)*
 
-```bash
-git clone <repo-url>
-cd skylos-demo
-pip install skylos vulture
-cd web && npm install && cd ..
-
-# Python static benchmark (Skylos vs Vulture, conf=20)
-python benchmark.py
-
-# Python hybrid benchmark (Skylos static + LLM vs Vulture, conf=10)
-export OPENAI_API_KEY=your_key_here  # or any litellm-supported provider
-python benchmark_hybrid.py
-
-# TypeScript benchmark (Skylos vs Knip, conf=80)
-python benchmark_ts.py
-```
-
-To test at different confidence levels, change `SKYLOS_CONFIDENCE` at the top of each script.
+</div>
 
 ---
 
-## Analysis: The Dynamic Dispatch Problem
+## Real-World Repos Tested
 
-Static analysis traditionally struggles with patterns where functions are called dynamically at runtime. Vulture and Knip generate false positives on all such patterns. Skylos v3.4.3 handles them natively in static mode (0/14 Python FPs, 0/8 TypeScript FPs).
+| # | Repository | Lang | Stars | What It Stress-Tests |
+|---|:---|:---:|---:|:---|
+| 1 | [psf/requests](https://github.com/psf/requests) | Python | 53k | `__init__.py` re-exports, Sphinx conf vars, pytest test classes |
+| 2 | [pallets/click](https://github.com/pallets/click) | Python | 17k | IO protocol methods (`io.RawIOBase` subclasses), nonlocal closures |
+| 3 | [encode/starlette](https://github.com/encode/starlette) | Python | 10k | ASGI interface params, polymorphic dispatch, public API surface |
+| 4 | [Textualize/rich](https://github.com/Textualize/rich) | Python | 51k | `__rich_console__` protocol, sentinel vars via `f_locals`, metaclasses |
+| 5 | [encode/httpx](https://github.com/encode/httpx) | Python | 14k | Transport/auth protocol methods, zero dead code (pure FP stress test) |
+| 6 | [pallets/flask](https://github.com/pallets/flask) | Python | 69k | Jinja2 template globals, Werkzeug protocol methods, extension hooks |
+| 7 | [pydantic/pydantic](https://github.com/pydantic/pydantic) | Python | 23k | Mypy plugin hooks, hypothesis `@resolves`, `__getattr__` dynamic config |
+| 8 | [fastapi/fastapi](https://github.com/fastapi/fastapi) | Python | 82k | 100+ OpenAPI spec model fields (Pydantic BaseModel), Starlette overrides |
+| 9 | [tqdm/tqdm](https://github.com/tqdm/tqdm) | Python | 30k | Keras/Dask framework callbacks, Rich column rendering, pandas monkey-patching |
+| 10 | [go-chi/chi](https://github.com/go-chi/chi) | Go | 18k | Chained selectors, Go receiver methods, test-file dead code |
+| 11 | [unjs/consola](https://github.com/unjs/consola) | TS | 7k | Same-file `as any` casts, orphaned modules, package.json entry points |
 
-**getattr() dispatch:**
+Plus a synthetic polyglot monorepo with 150 planted dead-code items across Python + TypeScript.
+
+---
+
+## Results: Python (Skylos vs Vulture)
+
+> Benchmarked on 9 of the most popular Python repos on GitHub — 350k+ combined stars.
+
+| Repository | Dead Items | Skylos TP | Skylos FP | Vulture TP | Vulture FP |
+|:---|---:|---:|---:|---:|---:|
+| psf/requests | 6 | **6** | 35 | 6 | 58 |
+| pallets/click | 7 | **7** | 8 | 6 | 6 |
+| encode/starlette | 1 | **1** | 4 | 1 | 2 |
+| Textualize/rich | 13 | **13** | 14 | 10 | 8 |
+| encode/httpx | 0 | **0** | 6 | 0 | 59 |
+| pallets/flask | 7 | **7** | 12 | 6 | 260 |
+| pydantic/pydantic | 11 | **11** | 93 | 10 | 112 |
+| fastapi/fastapi | 6 | **6** | 30 | 4 | 102 |
+| tqdm/tqdm | 1 | 0 | 18 | **1** | 37 |
+| **Total** | **52** | **51** | **220** | **44** | **644** |
+
+<br>
+
+| Metric | Skylos | Vulture |
+|:---|---:|---:|
+| **Recall** | **98.1%** (51/52) | 84.6% (44/52) |
+| **False Positives** | **220** | 644 |
+| **Dead items found** | **51** | 44 |
+| **Precision** | **18.8%** | 6.4% |
+
+**Skylos finds 7 more dead items with 3x fewer false positives.**
+
+### Where the gap is largest
+
+| Repo | Vulture FP | Skylos FP | What Vulture flags incorrectly |
+|:---|---:|---:|:---|
+| **flask** | 260 | **12** | Jinja2 template globals, Werkzeug protocol methods |
+| **pydantic** | 112 | **93** | Config annotations, `TYPE_CHECKING` imports, mypy hooks |
+| **fastapi** | 102 | **30** | 100+ OpenAPI model fields (`maxLength`, `exclusiveMinimum`) |
+| **httpx** | 59 | **6** | Transport/auth protocol methods |
+| **requests** | 58 | **35** | `__init__.py` re-exports, Sphinx `conf.py` variables |
+
+### Where Skylos still loses (honestly)
+
+| Repo | Skylos FP | Vulture FP | Why |
+|:---|---:|---:|:---|
+| **click** | 8 | **6** | IO protocol methods on `io.RawIOBase` subclasses |
+| **starlette** | 4 | **2** | Instance method calls not resolved to class definitions |
+| **rich** | 14 | **8** | Sentinel vars checked via `f_locals.get("name")` |
+| **tqdm** | 18 | 37 | Skylos misses 1 dead function (suppressed as re-export) |
+
+---
+
+## Results: TypeScript (Skylos vs Knip)
+
+> Benchmarked on [unjs/consola](https://github.com/unjs/consola) — 7,200 stars, 21 files, ~2,050 LOC.
+
+Ground truth: 4 dead items (entire orphaned `src/utils/format.ts` module), 31 confirmed-alive items.
+
+| Metric | Skylos | Knip |
+|:---|---:|---:|
+| **True Positives** | **4** | **4** |
+| **False Positives** | **7** | 8 |
+| **False Negatives** | **0** | **0** |
+| **Precision** | **36.4%** | 7.5% |
+| **Recall** | **100%** | **100%** |
+| **F1 Score** | **53.3%** | 14.0% |
+| **Speed** | **6.83s** | 11.08s |
+
+Both tools achieve 100% recall. Skylos has **~5x better precision**.
+
+**Why Knip struggles here:** Its `package.json` exports point to `dist/` not `src/`, so Knip can't trace entry points — it flags `basic.ts`, `browser.ts`, `core.ts` as dead files and reports public API re-exports as unused.
+
+**Why Skylos has FPs:** Same-file variable references it can't resolve (e.g. `TYPE_COLOR_MAP` used via `(TYPE_COLOR_MAP as any)[logObj.type]` on the same page).
+
+---
+
+## Synthetic Benchmark: Polyglot Monorepo
+
+A controlled environment with planted dead code to test harder patterns.
+
+**Setup:** Python (FastAPI) + TypeScript (Express) monorepo with:
+- 150 ground-truth dead-code items (110 Python + 40 TypeScript)
+- 22 dynamic dispatch traps (getattr, globals, `__init_subclass__`, decorators, bracket notation)
+- Optional LLM verification layer
+
+### Results
+
+| Configuration | Precision | Recall | F1 | Speed | FPs | Dynamic Dispatch |
+|:---|---:|---:|---:|---:|---:|---:|
+| **Skylos Hybrid High-Conf** | **67.4%** | **93.9%** | **78.5%** | 419s | **2** | **8/8** |
+| Skylos Static (conf=10) | 52.5% | 93.9% | 67.4% | 2s | 13 | 0/8 |
+| Skylos Static (conf=60) | 72.7% | 72.7% | 72.7% | 2s | 9 | 0/8 |
+| Vulture | 38.5% | 75.8% | 50.8% | 0.1s | 14 | 0/8 |
+
+**Key takeaway:** LLM verification eliminates **84.6% of false positives** (13 -> 2) with zero recall cost. It catches all 8 dynamic dispatch patterns that fool static analysis.
+
+### What are the dynamic dispatch traps?
+
+Static analysis sees 0 references and flags as dead. But these are called at runtime:
+
 ```python
-def export_csv(data): ...  # Static sees 0 references
+# getattr() dispatch — static sees 0 refs to export_csv
+def export_csv(data): ...
 def run_export(fmt):
     handler = getattr(sys.modules[__name__], f"export_{fmt}")
     return handler(data)
-```
 
-**globals() dict access:**
-```python
-def handle_create(payload): ...  # Static sees 0 references
-HANDLER_MAP = {action: globals()[f"handle_{action}"] for action in ("create", "update", "delete")}
-```
+# globals() dict — static sees 0 refs to handle_create
+HANDLER_MAP = { action: globals()[f"handle_{action}"]
+                for action in ("create", "update", "delete") }
 
-**__init_subclass__ registration:**
-```python
+# __init_subclass__ — static sees 0 refs to EmailHandler
 class Base:
-    def __init_subclass__(cls):
-        REGISTRY[cls.name] = cls
-class EmailHandler(Base):  # registered at import time
-    name = "email"
+    def __init_subclass__(cls): REGISTRY[cls.name] = cls
+class EmailHandler(Base): name = "email"
 ```
 
-This benchmark includes 22 such traps (14 Python + 8 TypeScript). Skylos correctly avoids false-flagging all of them; Vulture flags all 14 Python patterns as dead code.
+The LLM reads the source file, recognizes the dynamic pattern, and correctly marks them as alive.
 
 ---
 
-## What we are doing
+## Reproduce Any Benchmark
 
-1. **Define ground truth**
-   - `EXPECTED_UNUSED`: a curated list of symbols that are *truly unused* in the repo.
-     - Includes unused imports, helper functions, constants, and unused classes/schemas/models.
-   - `ACTUALLY_USED`: a curated list of symbols that are *definitely used* (should not be flagged).
+```bash
+# Real-world repos (Python)
+cd real_life_examples/{repo} && python3 ../benchmark_{repo}.py
 
-2. **Run both tools**
-   - Run Skylos with JSON output (and a confidence threshold).
-   - Run Vulture with a min-confidence threshold.
+# Real-world (TypeScript)
+cd real_life_examples/consola && python3 ../benchmark_consola.py
 
-3. **Normalize outputs**
-   - Convert paths to consistent relative paths (e.g. `app/...`).
-   - Normalize symbol names where tools disagree on representation (e.g. alias imports).
-     - Example: `from x import format_money as fmt_money` may be reported as either `fmt_money` or `format_money` depending on tool. We canonicalize them so comparison is fair.
+# Synthetic monorepo
+python benchmark_hybrid.py --confidence 10
 
-4. **Compute correctness**
-   - Convert each tool’s output into a set of `(file, symbol)` pairs.
-   - Compare those sets to ground truth sets.
-
-5. **Print summary + detailed tables**
-   - A summary table of TP/FP/FN + precision/recall.
-   - A per-ground-truth checklist of what each tool found/missed.
-   - Any false positives (things marked used but flagged).
-   - Any “other” findings not in either list.
+# Requirements
+pip install skylos vulture    # Python benchmarks
+npm install -g knip           # TypeScript benchmarks
+```
 
 ---
 
-## What is being tested (and why we think it's realistic)
+## Methodology
 
-This repo is structured like a real polyglot monorepo with two apps:
+1. **Define ground truth** — `EXPECTED_UNUSED` (truly dead symbols) and `ACTUALLY_USED` (confirmed alive) curated per repo
+2. **Run tools** — Skylos, Vulture/Knip with JSON output
+3. **Normalize** — Consistent paths, canonicalized alias names
+4. **Score** — TP/FP/FN, precision, recall, F1
 
-- **Python** (`app/`): FastAPI app with SQLAlchemy, Pydantic, and httpx integrations
-- **TypeScript** (`web/`): Express app mirroring the same architecture with TS-specific patterns
+### What counts as a false positive?
 
-Both apps share the same layered architecture: routes -> services -> db/crud/models -> schemas, with:
-- helper functions that are left around but never called
-- unused imports after refactors
-- unused schemas/models from feature churn
-- integration code (webhooks, slack/github clients) with a mix of used + unused helpers
+Patterns that cause other tools to report noise:
 
-We are explicitly testing:
-
-### 1) Basic dead-code detection
-- Unused imports (14 items: 8 Python + 6 TypeScript)
-- Unused private helpers (`_normalize_query`/`_normalizeQuery`, `_row_to_dict`/`_rowToObject`, `_build_search_query`, etc.)
-- Unused constants (`DEFAULT_PAGE_SIZE`, `APP_DISPLAY_NAME`, `MAX_UPLOAD_SIZE`, `AUDIT_RETENTION_DAYS`, etc.)
-- Unused classes, interfaces, and schemas (`DemoError`, `Tag`, `NoteInternal`, `NotePatch`, `Comment`, `Attachment`, etc.)
-
-**Why it matters:** This is the bread-and-butter of dead-code tools.
-
-**Expected behavior:**
-- Static analysis should catch most of these (high recall)
-- These are straightforward cases with no ambiguity
-
-### 2) Cross-file dependency usage
-Symbols that are defined in one layer but used in another:
-- routers call service functions
-- services call CRUD functions
-- CRUD uses models / sessions
-
-**Why it matters:** Real dead-code analysis is mostly about cross-file reference tracking.
-
-**Expected behavior:**
-- Tools must build full project call graph, not just per-file analysis
-- Failure mode: marking used functions as dead due to incomplete reference tracking
-
-### 3) Framework "implicit usage" (FastAPI wiring)
-FastAPI endpoints can be "used" even if nothing directly calls them:
-- `@router.get(...)` handlers are invoked by the framework at runtime
-- router objects become active when included via `include_router(...)`
-
-**Why it matters:** Many dead-code tools struggle here and produce false positives (noise).
-
-**Expected behavior:**
-- Tools should recognize `@router.get/post/...` as framework registration
-- Tools should recognize `app.include_router()` makes routers "used"
-- Failure mode: flagging active endpoints as unused
-
-### 4) **Dynamic dispatch patterns**
-
-#### Python (14 test cases)
-
-**Pattern 4a: getattr() dispatch** (6 test cases — export\_service + notification\_service)
-```python
-def export_csv(data): ...  # 0 static references
-def export_json(data): ...  # 0 static references
-
-def run_export(fmt):
-    handler = getattr(sys.modules[__name__], f"export_{fmt}")
-    return handler(data)  # called dynamically
-```
-
-**Pattern 4b: globals() dict access** (3 test cases)
-```python
-def handle_create(payload): ...  # 0 static references
-
-HANDLER_MAP = {
-    action: globals()[f"handle_{action}"]
-    for action in ("create", "update", "delete")
-}
-```
-
-**Pattern 4c: __init_subclass__ registration** (2 test cases)
-```python
-class RegisteredHandler:
-    def __init_subclass__(cls):
-        REGISTRY[cls.name] = cls
-
-class EmailHandler(RegisteredHandler):
-    name = "email"
-```
-
-**Pattern 4d: @task decorator registry** (1 test case)
-```python
-@task("send_welcome_email")
-def send_welcome_email(email=""):  # registered via decorator
-    print(f"Sending welcome email to {email}")
-```
-
-**Pattern 4e: @on() event handler registration** (2 test cases)
-```python
-@EventBus.on("note_created")
-def on_note_created_log(**kwargs):  # called via EventBus.emit()
-    print(f"note_created: {kwargs.get('title')}")
-```
-
-#### TypeScript (8 test cases)
-
-**Pattern 4d: Bracket notation on module exports** (3 test cases)
-```typescript
-export function exportCsv(data: unknown[]): string { ... }
-export function exportJson(data: unknown[]): string { ... }
-
-import * as self from "./exportService";
-export function runExport(data: unknown[], fmt: string): string {
-  const handler = (self as Record<string, unknown>)[handlerName];
-  return handler(data);  // called dynamically
-}
-```
-
-**Pattern 4e: Record<string, Function> map** (3 test cases)
-```typescript
-export function handleCreate(payload): Record<string, unknown> { ... }
-
-const HANDLER_MAP: Record<string, Function> = {
-  create: handleCreate, update: handleUpdate, delete: handleDelete,
-};
-```
-
-**Pattern 4f: Decorator-based registry** (2 test cases)
-```typescript
-@RegisterHandler("email")
-export class EmailHandler extends RegisteredHandler { ... }
-```
-
-**Why it matters:** Static analysis sees 0 references → flags as dead (false positive). Dynamic dispatch is common in both Python and TypeScript codebases.
-
-**Expected behavior:**
-- **Vulture/Knip**: Flag all dynamic patterns as dead (false positives)
-- **Skylos v3.4.3**: Correctly identifies all 22 as used (0 false positives)
-
-### 5) Name-collision / heuristic traps
-A deliberate example where method names collide (e.g. `process` exists on multiple classes):
-- `CreditCard.process()` is used
-- `PayPal.process()` is NOT used (but has same name)
-
-**Why it matters:** Naive approaches may overgeneralize "method name is used somewhere ⇒ all methods with that name are used".
-
-**Expected behavior:**
-- Tools should distinguish between different class methods with same name
-- Failure mode: marking `PayPal.process` as used due to `CreditCard.process` usage
-
-### 6) Transitive dead code (HARD - not yet caught)
-
-Functions only called by other dead functions:
-```python
-def _build_header(title): ...
-def generate_report_v1(...):     # 0 references
-    header = _build_header(...) 
-```
-
-**Why it matters:** Helps find "chains" of dead code where helper functions are only used by unused code.
-
-**Expected behavior:**
-- **Current state:** No tool catches this (requires graph-based propagation)
-- **Future work:** Need transitive dead code analysis in static analyzer
-
-**Current false negatives:**
-- `_build_header` (only called by dead `generate_report_v1`)
-- `_build_footer` (only called by dead `generate_report_v1`)
-
-### 7) Alias-import reporting differences
-Imports like `import x as y` can be represented differently by different tools.
-We normalize this so we are measuring detection quality, not string formatting.
+| Pattern | Example | Affected Repos |
+|:---|:---|:---|
+| Re-export barrels | `__init__.py` re-exports | requests, rich |
+| Framework callbacks | Keras/Dask/ASGI | tqdm, fastapi, starlette |
+| Model field annotations | Pydantic `BaseModel` attrs | pydantic, fastapi |
+| Dynamic attribute access | `__getattr__`, `getattr()`, `f_locals` | pydantic, rich |
+| Protocol methods | `io.RawIOBase`, transport interfaces | click, httpx |
+| Template globals | Jinja2 template vars | flask |
+| `as any` casts | `(MAP as any)[key]` | consola |
+| package.json -> dist/ | Entry points not in src/ | consola |
 
 ---
 
-## Why we think this is a good test
-
-This benchmark is "good" because it is:
-
-### Ground truthed
-We don't just eyeball outputs; we compare against a known list of unused and used items (150 expected unused across 2 languages, 141 actually used).
-
-### Mixed difficulty
-It contains:
-- **Easy cases** (unused import, unused constant)
-- **Medium cases** (unused helper in a services layer, cross-file references)
-- **Hard cases** (framework wiring, alias imports, name collisions)
-- **Very hard cases** (dynamic dispatch patterns that fool static analysis)
-
-The **dynamic dispatch patterns** (22 test cases across Python + TypeScript) are the key differentiator that tests whether tools can handle real-world polyglot patterns.
-
-### Multi-language
-Tests that the tool works across Python and TypeScript with equivalent detection quality. Vulture is Python-only and serves as a single-language baseline.
-
-### Fair comparison
-We normalize tool outputs to avoid penalizing one tool for naming conventions (e.g. alias reporting).
-
-### Actionable
-The outputs directly map to:
-- what the tool should catch (true positives)
-- what it missed (false negatives)
-- what it incorrectly flagged (false positives)
-
-### Tests advanced features
-The dynamic dispatch patterns (22 test cases) specifically test how well tools handle real-world patterns that fool naive static analysis.
-
----
-
-## When this benchmark would NOT be "good" (and what we'd change down the line)
-
-To keep this benchmark credible, we must ensure:
-
-### A) Ground truth stays correct
-If `EXPECTED_UNUSED` contains items that are actually used internally (e.g. dataclasses instantiated within their own module), then we inflate false negatives and distort recall.
-**Fix:** only include truly unused items.
-
-### B) ACTUALLY_USED is truly used
-If `ACTUALLY_USED` includes things that are not actually referenced anywhere (e.g. a helper that isn’t imported/called), then we inflate false positives and distort precision.
-**Fix:** only list items with a real call-site/import path.
-
-### C) We do not count non-app files unintentionally
-If the tool scans `benchmark.py` itself, "Other Findings" will include benchmark helpers and dilute the demo.
-**Fix:** run tools on `app/` and `tests/` only.
-
-### D) We will evolve the test as Skylos improves
-Once Skylos handles these patterns well, we can add additional realistic scenarios:
-- dynamically imported plugins (entrypoints / registries)
-- pydantic validators and model config usage
-- FastAPI dependencies (`Depends(...)`) used via injection
-- conditional imports / typing-only imports
-
----
-
-## Summary
-
-This benchmark evaluates Skylos dead-code detection by:
-- **Testing across Python + TypeScript** with identical architecture and dead-code categories
-- **Testing 22 dynamic dispatch patterns** across both languages that fool static analysis
-- **Measuring TP/FP/FN** against curated ground truth (150 expected unused, 141 actually used)
-- **Comparing against Vulture** (Python-only) and **Knip** (TypeScript-only)
-- **Reporting precision/recall** plus detailed per-item results
-
-### Key Findings
-
-1. **Python**: Skylos has +23.4% precision over Vulture (79.2% vs 55.8%) and +6.3% recall (93.6% vs 87.3%) at conf=20
-2. **Dynamic dispatch**: Skylos v3.4.3 catches all 14 Python dynamic patterns in static mode (Vulture: 14/14 false positives)
-3. **TypeScript**: Skylos has +8.9% precision and +7.5% recall over Knip, with 78% fewer false positives (3 vs 14)
-4. **Hybrid LLM**: Eliminates 2 additional FPs with minimal recall cost (93.6% → 92.7%)
-
-
-## Expected Skylos Findings (Demo)
-
-This repo intentionally contains unused imports / functions / variables / classes so Skylos has something to detect.
-
-> **Warning:** The security issues below are intentionally unsafe for benchmarking. Do **NOT** deploy this repo.
+<details>
+<summary><strong>Full list of planted dead code (synthetic monorepo)</strong></summary>
 
 ### Unused Imports
 
-**Python (8)**
-- `app/logging.py`: `import math`
-- `app/api/routers/notes.py`: `from datetime import datetime`
-- `app/api/deps.py`: `from app.config import get_settings`
-- `app/api/deps.py`: `Session`
-- `app/api/routers/reports.py`: `from app.utils.formatters import format_money as fmt_money`
-- `app/integrations/bootstrap.py`: `flask`
-- `app/integrations/bootstrap.py`: `sys`
-- `app/integrations/slack.py`: `Tuple`
+**Python (8):** `math` (logging.py), `datetime` (notes.py), `get_settings` (deps.py), `Session` (deps.py), `fmt_money` (reports.py), `flask` (bootstrap.py), `sys` (bootstrap.py), `Tuple` (slack.py)
 
-**TypeScript (6)**
-- `web/src/logging.ts`: `import path`
-- `web/src/routes/notes.ts`: `import { URL }`
-- `web/src/middleware/auth.ts`: `import { loadConfig }`
-- `web/src/routes/reports.ts`: `import { formatMoney }`
-- `web/src/integrations/bootstrap.ts`: `import express`
-- `web/src/integrations/slack.ts`: `import { EventEmitter }`
+**TypeScript (6):** `path` (logging.ts), `URL` (notes.ts), `loadConfig` (auth.ts), `formatMoney` (reports.ts), `express` (bootstrap.ts), `EventEmitter` (slack.ts)
 
 ### Unused Functions
 
-**Python (63)**
-- `app/config.py`: `_is_prod()`, `_parse_cors_origins()`
-- `app/api/deps.py`: `get_actor_from_headers()`
-- `app/api/routers/notes.py`: `_normalize_query()`
-- `app/api/routers/reports.py`: `generate_report()`
-- `app/db/session.py`: `_drop_all()`, `get_engine_info()`, `_reset_sequences()`
-- `app/db/crud.py`: `_row_to_dict()`, `bulk_create_notes()`, `_build_search_query()`
-- `app/services/notes_services.py`: `_validate_title()`, `normalize_and_score_query()`
-- `app/utils/ids.py`: `slugify()`, `new_request_id()`, `weak_token()`
-- `app/utils/formatters.py`: `format_money()`
-- `app/services/payment_services.py`: `process()`, `run_payment()` (method-name collision trap)
-- `app/core/errors.py`: `not_found()`
-- `app/integrations/http_client.py`: `request_text()`
-- `app/integrations/webhook_signing.py`: `verify_hmac_sha256_prefixed()`
-- `app/integrations/slack.py`: `build_finding_blocks()`
-- `app/integrations/github.py`: `find_issue_by_title()`
-- `app/integrations/metrics.py`: `timed_request()`, `snapshot_metrics()`, `add_tags()`
-- `app/services/report_service.py`: `_build_header()`, `_build_footer()`, `generate_report_v1()`, `_search_v2()`
-- `app/core/middleware.py`: `generate_correlation_id()`
-- `app/core/decorators.py`: `validate_input()`, `deprecate()`
-- `app/services/tasks.py`: `generate_daily_report()`, `sync_external_contacts()`, `cleanup_expired_sessions()`
-- `app/core/cache.py`: `invalidate_cache_for()`
-- `app/core/feature_flags.py`: `get_all_flags()`, `_evaluate_flag_with_context()`
-- `app/core/events.py`: `on_note_deleted_cleanup()`, `on_user_signed_up_welcome()`
-- `app/core/pagination.py`: `apply_filters()`
-- `app/core/auth.py`: `validate_bearer_token()`, `generate_api_token()`, `check_ip_allowlist()`
-- `app/core/plugins.py`: `list_plugins()`, `unload_plugin()`
-- `app/services/notification_service.py`: `send_bulk_notifications()`, `schedule_notification()`, `_render_template()`
-- `app/services/audit_service.py`: `query_audit_log()`, `_redact_sensitive_fields()`, `export_audit_csv()`
-- `tests/conftest.py`: `mock_redis()`, `admin_user()`
-- `tests/factories.py`: `random_email()`
-- `tests/helpers.py`: `assert_paginated_response()`, `wait_for_event()`, `mock_external_service()`
-- `tests/test_notes.py`: `test_create_note_with_tags()`, `test_bulk_import_notes()`, `_seed_notes()`
+**Python (63):** `_is_prod`, `_parse_cors_origins`, `get_actor_from_headers`, `_normalize_query`, `generate_report`, `_drop_all`, `get_engine_info`, `_reset_sequences`, `_row_to_dict`, `bulk_create_notes`, `_build_search_query`, `_validate_title`, `normalize_and_score_query`, `slugify`, `new_request_id`, `weak_token`, `format_money`, `process`, `run_payment`, `not_found`, `request_text`, `verify_hmac_sha256_prefixed`, `build_finding_blocks`, `find_issue_by_title`, `timed_request`, `snapshot_metrics`, `add_tags`, `_build_header`, `_build_footer`, `generate_report_v1`, `_search_v2`, `generate_correlation_id`, `validate_input`, `deprecate`, `generate_daily_report`, `sync_external_contacts`, `cleanup_expired_sessions`, `invalidate_cache_for`, `get_all_flags`, `_evaluate_flag_with_context`, `on_note_deleted_cleanup`, `on_user_signed_up_welcome`, `apply_filters`, `validate_bearer_token`, `generate_api_token`, `check_ip_allowlist`, `list_plugins`, `unload_plugin`, `send_bulk_notifications`, `schedule_notification`, `_render_template`, `query_audit_log`, `_redact_sensitive_fields`, `export_audit_csv`, `mock_redis`, `admin_user`, `random_email`, `assert_paginated_response`, `wait_for_event`, `mock_external_service`, `test_create_note_with_tags`, `test_bulk_import_notes`, `_seed_notes`
 
-**TypeScript (23)**
-- `web/src/config.ts`: `_isProd()`
-- `web/src/middleware/auth.ts`: `getActorFromHeaders()`
-- `web/src/routes/notes.ts`: `_normalizeQuery()`
-- `web/src/db/session.ts`: `_dropAll()`
-- `web/src/db/crud.ts`: `_rowToObject()`
-- `web/src/services/noteService.ts`: `_validateTitle()`
-- `web/src/utils/ids.ts`: `slugify()`
-- `web/src/utils/formatters.ts`: `formatMoney()`
-- `web/src/services/paymentService.ts`: `process` (same-name method trap), `runPayment()`
-- `web/src/core/errors.ts`: `notFound()`
-- `web/src/integrations/httpClient.ts`: `requestText()`, `getHttpClient()`
-- `web/src/integrations/webhookSigning.ts`: `verifyHmacSha256Prefixed()`
-- `web/src/integrations/slack.ts`: `buildFindingBlocks()`
-- `web/src/integrations/github.ts`: `authHeaders()`, `findIssueByTitle()`
-- `web/src/integrations/metrics.ts`: `snapshotMetrics()`, `timedRequest()`
-- `web/src/services/reportService.ts`: `_buildHeader()`, `_buildFooter()`, `generateReportV1()`, `_searchV2()`
+**TypeScript (24):** `_isProd`, `getActorFromHeaders`, `_normalizeQuery`, `_dropAll`, `_rowToObject`, `_validateTitle`, `slugify`, `formatMoney`, `process`, `runPayment`, `notFound`, `requestText`, `getHttpClient`, `verifyHmacSha256Prefixed`, `buildFindingBlocks`, `authHeaders`, `findIssueByTitle`, `snapshotMetrics`, `timedRequest`, `_buildHeader`, `_buildFooter`, `generateReportV1`, `_searchV2`
 
-### Unused Variables / Constants
+### Unused Variables
 
-**Python (17)**
-- `app/main.py`: `APP_DISPLAY_NAME`
-- `app/config.py`: `MAX_UPLOAD_SIZE`
-- `app/db/crud.py`: `DEFAULT_PAGE_SIZE`
-- `app/db/session.py`: `DB_POOL_SIZE`
-- `app/utils/ids.py`: `DEFAULT_REQUEST_ID`
-- `app/integrations/http_client.py`: `DEFAULT_HEADERS`
-- `app/integrations/metrics.py`: `_queue_depth`
-- `app/services/tasks.py`: `TASK_PRIORITY_HIGH`, `TASK_PRIORITY_LOW`
-- `app/core/feature_flags.py`: `FLAG_ADMIN_ENDPOINT`
-- `app/core/events.py`: `EVENT_NOTE_ARCHIVED`
-- `app/core/auth.py`: `ROLE_VIEWER`, `TOKEN_ALGORITHM`
-- `app/services/notification_service.py`: `MAX_BATCH_SIZE`
-- `app/services/audit_service.py`: `AUDIT_RETENTION_DAYS`
-- `tests/conftest.py`: `TEST_TIMEOUT`
-- `tests/helpers.py`: `SLOW_TEST_THRESHOLD`
+**Python (17):** `APP_DISPLAY_NAME`, `MAX_UPLOAD_SIZE`, `DEFAULT_PAGE_SIZE`, `DB_POOL_SIZE`, `DEFAULT_REQUEST_ID`, `DEFAULT_HEADERS`, `_queue_depth`, `TASK_PRIORITY_HIGH`, `TASK_PRIORITY_LOW`, `FLAG_ADMIN_ENDPOINT`, `EVENT_NOTE_ARCHIVED`, `ROLE_VIEWER`, `TOKEN_ALGORITHM`, `MAX_BATCH_SIZE`, `AUDIT_RETENTION_DAYS`, `TEST_TIMEOUT`, `SLOW_TEST_THRESHOLD`
 
-**TypeScript (5)**
-- `web/src/index.ts`: `APP_DISPLAY_NAME`
-- `web/src/db/crud.ts`: `DEFAULT_PAGE_SIZE`
-- `web/src/utils/ids.ts`: `DEFAULT_REQUEST_ID`
-- `web/src/integrations/httpClient.ts`: `DEFAULT_HEADERS`
-- `web/src/integrations/metrics.ts`: `_queueDepth`
+**TypeScript (5):** `APP_DISPLAY_NAME`, `DEFAULT_PAGE_SIZE`, `DEFAULT_REQUEST_ID`, `DEFAULT_HEADERS`, `_queueDepth`
 
-### Unused Classes / Models / Schemas
+### Unused Classes
 
-**Python (22)**
-- `app/core/errors.py`: `class DemoError(Exception)`
-- `app/db/models.py`: `class Tag(Base)`, `class Comment(Base)`, `class Attachment(Base)`
-- `app/schemas/notes.py`: `class NoteInternal(BaseModel)`, `class NotePatch(BaseModel)`, `class NoteSearch(BaseModel)`
-- `app/services/payment_services.py`: `class PayPal`
-- `app/core/middleware.py`: `class CorrelationIdMiddleware`, `class RateLimitMiddleware`
-- `app/core/base.py`: `class MongoNoteRepository`, `class PagerDutyNotifier`
-- `app/core/cache.py`: `class RedisCache`
-- `app/core/exceptions.py`: `class AuthenticationError`, `class AuthorizationError`, `class RateLimitError`, `class ExternalServiceError`
-- `app/core/pagination.py`: `class CursorParams`, `class CursorResult`
-- `app/services/notification_service.py`: `class NotificationLog`
-- `tests/factories.py`: `class UserFactory`, `class TagFactory`
+**Python (22):** `DemoError`, `Tag`, `Comment`, `Attachment`, `NoteInternal`, `NotePatch`, `NoteSearch`, `PayPal`, `CorrelationIdMiddleware`, `RateLimitMiddleware`, `MongoNoteRepository`, `PagerDutyNotifier`, `RedisCache`, `AuthenticationError`, `AuthorizationError`, `RateLimitError`, `ExternalServiceError`, `CursorParams`, `CursorResult`, `NotificationLog`, `UserFactory`, `TagFactory`
 
-**TypeScript (6)**
-- `web/src/core/errors.ts`: `class DemoError`
-- `web/src/db/models.ts`: `interface Tag`
-- `web/src/schemas/notes.ts`: `interface NoteInternal`
-- `web/src/types/index.ts`: `interface AppConfig`, `interface RequestContext`, `interface PaginationParams`
+**TypeScript (6):** `DemoError`, `Tag`, `NoteInternal`, `AppConfig`, `RequestContext`, `PaginationParams`
 
-### Security Findings (Intentionally Vulnerable for Demo)
+### Intentional Security Findings (for demo)
 
-- `app/db/crud.py`: `search_notes` — **SQL injection** via f-string/interpolated SQL (`text(f"...{q}...")`)
-- `app/api/routers/notes.py`: `POST /fetch` (`fetch_url`) — **SSRF-style** untrusted URL fetch via `httpx` client
-- `app/api/routers/health.py`: `GET /debug/read-file` (`read_file`) — **Path traversal / arbitrary file read** via `open(path)`
-- `app/utils/ids.py`: `weak_token` — **Weak randomness** for tokens (uses `random` instead of `secrets`)
+- SQL injection via f-string in `search_notes`
+- SSRF via untrusted URL fetch in `fetch_url`
+- Path traversal in `read_file`
+- Weak randomness in `weak_token`
 
+</details>
 
-### Quality Findings (Intentionally Bad for Demo)
+<details>
+<summary><strong>Known limitations</strong></summary>
 
-- `app/integrations/routers/webhook.py`: `POST /integrations/webhooks/demo` (`demo_webhook`) — **Blocking call in async handler** (`time.sleep(0.2)` inside `async def`)
-- `app/services/notes_services.py`: `normalize_and_score_query` — **High cyclomatic complexity / deep nesting**
-- `app/integrations/metrics.py`: `add_tags` — **Mutable default argument** (`tags: dict = {}`) + mutation
----
+**Transitive dead code (2 false negatives):**
+`_build_header` and `_build_footer` are only called by dead `generate_report_v1`. Requires graph-based propagation (work in progress).
 
-### Known Limitations
+**Imported but unused (2 remaining FPs):**
+`search` and `new_request_id` are imported in main.py but never called. The LLM cannot detect these without cross-file import analysis.
 
-**Remaining false negatives (7 items Skylos misses at conf=20):**
-- 2 event handlers (`on_note_deleted_cleanup`, `on_user_signed_up_welcome`) — registered via `@on()` decorator
-- 2 test fixtures (`mock_redis`, `admin_user`) — pytest fixtures not called directly
-- 2 test functions (`test_create_note_with_tags`, `test_bulk_import_notes`) — disabled tests
-- 1 variable (`MAX_BATCH_SIZE`) — unused constant
-
-**Remaining false positives (15 items Skylos incorrectly flags at conf=20):**
-- Cross-file references where the import chain is indirect (e.g. `search`, `dispatch` re-exported via `main.py`)
-- Abstract method implementations (`SqlNoteRepository`, `SlackNotifier`, `verify_api_key`)
-- Framework-registered items not yet recognized (`ValidationError`, `NotFoundError`)
+</details>
 
 ---
 
 ## Citation
-
-If you use this benchmark in your research or tools, please cite:
 
 ```
 Skylos Dead-Code Detection Benchmark
 https://github.com/duriantaco/skylos-demo
 Ground-truthed evaluation of static dead code detection
 ```
-
