@@ -15,7 +15,9 @@ def is_enabled(flag_name: str) -> bool:
     return _flag_store.get(flag_name, False)
 
 
-def _evaluate_flag_with_context(flag_name: str, context: dict[str, Any] | None = None) -> bool:  # UNUSED (demo)
+def _evaluate_flag_with_context(
+    flag_name: str, context: dict[str, Any] | None = None
+) -> bool:  # UNUSED (demo)
     base = _flag_store.get(flag_name, False)
     if not base or context is None:
         return base

@@ -64,8 +64,6 @@ def cached(namespace: str, ttl: int = 120):
 
 # NOTE: useful for cache-busting after bulk writes
 def invalidate_cache_for(namespace: str) -> None:  # UNUSED (demo)
-    keys_to_delete = [
-        k for k in _default_cache._store if k.startswith(f"{namespace}:")
-    ]
+    keys_to_delete = [k for k in _default_cache._store if k.startswith(f"{namespace}:")]
     for k in keys_to_delete:
         _default_cache.delete(k)

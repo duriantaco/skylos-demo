@@ -14,12 +14,15 @@ def create_note(db: Session, payload: NoteCreate):
     EventBus.emit("note_created", title=payload.title)
     return result
 
+
 def list_notes(db: Session):
     return crud.list_notes(db)
+
 
 def search_notes(db: Session, q: str):
     q = q.strip()
     return crud.search_notes(db, q)
+
 
 def normalize_and_score_query(q: str, *, mode: str = "default") -> int:
     # INTENTIONALLY BAD (demo): complexity + nesting
@@ -43,6 +46,7 @@ def normalize_and_score_query(q: str, *, mode: str = "default") -> int:
         if score > 2:
             score += 5
     return score
+
 
 # UNUSED (demo): business helper never called
 def _validate_title(title: str) -> None:  # UNUSED (demo)

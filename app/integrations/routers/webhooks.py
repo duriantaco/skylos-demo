@@ -13,7 +13,6 @@ router = APIRouter(prefix="/integrations")
 
 @router.post("/webhooks/demo")
 async def demo_webhook(request: Request):
-
     t0 = time.time()
     time.sleep(0.2)
     record_request()

@@ -6,16 +6,13 @@ from typing import Any
 
 class NoteRepository(ABC):
     @abstractmethod
-    def create(self, data: dict[str, Any]) -> dict[str, Any]:
-        ...
+    def create(self, data: dict[str, Any]) -> dict[str, Any]: ...
 
     @abstractmethod
-    def find_by_id(self, note_id: str) -> dict[str, Any] | None:
-        ...
+    def find_by_id(self, note_id: str) -> dict[str, Any] | None: ...
 
     @abstractmethod
-    def list_all(self) -> list[dict[str, Any]]:
-        ...
+    def list_all(self) -> list[dict[str, Any]]: ...
 
 
 class SqlNoteRepository(NoteRepository):
@@ -49,8 +46,7 @@ class MongoNoteRepository(NoteRepository):  # UNUSED (demo)
 
 class Notifier(ABC):
     @abstractmethod
-    def send(self, message: str) -> None:
-        ...
+    def send(self, message: str) -> None: ...
 
 
 class SlackNotifier(Notifier):

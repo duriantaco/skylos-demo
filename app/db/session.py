@@ -15,8 +15,10 @@ engine = create_engine(
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+
 
 def get_engine_info() -> dict:  # UNUSED (demo)
     inspector = inspect(engine)
@@ -25,8 +27,10 @@ def get_engine_info() -> dict:  # UNUSED (demo)
         "tables": inspector.get_table_names(),
     }
 
+
 def _drop_all() -> None:  # UNUSED (demo)
     Base.metadata.drop_all(bind=engine)
+
 
 def _reset_sequences(db_session) -> None:  # UNUSED (demo)
     for table in reversed(Base.metadata.sorted_tables):

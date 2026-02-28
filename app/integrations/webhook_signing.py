@@ -36,4 +36,4 @@ def verify_hmac_sha256_prefixed(
 ) -> bool:
     if not signature or not signature.startswith(prefix):
         return False
-    return verify_hmac_sha256(secret=secret, body=body, signature=signature[len(prefix):])
+    return verify_hmac_sha256(secret=secret, body=body, signature=signature[len(prefix) :])

@@ -7,7 +7,6 @@ from typing import Any, Callable
 
 
 def retry(max_attempts: int = 3, delay: float = 0.1):
-
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:

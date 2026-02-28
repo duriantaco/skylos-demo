@@ -18,7 +18,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         start = time.time()
         response = await call_next(request)
         duration_ms = (time.time() - start) * 1000
-        print(f"[http] {request.method} {request.url.path} {response.status_code} {duration_ms:.0f}ms")
+        print(
+            f"[http] {request.method} {request.url.path} {response.status_code} {duration_ms:.0f}ms"
+        )
         return response
 
 

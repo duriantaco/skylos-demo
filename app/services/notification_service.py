@@ -71,7 +71,7 @@ def schedule_notification(  # UNUSED (demo)
     recipient: str,
     message: str,
     send_at: str = "",
-) -> dict[str, Any]: 
+) -> dict[str, Any]:
     return {
         "channel": channel.value,
         "recipient": recipient,

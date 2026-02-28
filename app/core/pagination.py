@@ -27,6 +27,7 @@ class PageResult(Generic[T]):
     def pages(self) -> int:
         return (self.total + self.size - 1) // self.size if self.size else 0
 
+
 @dataclass
 class CursorParams:  # UNUSED (demo)
     cursor: str | None = None

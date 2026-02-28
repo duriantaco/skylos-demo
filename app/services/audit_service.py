@@ -56,10 +56,7 @@ def _redact_sensitive_fields(  # UNUSED (demo)
     sensitive_keys: tuple[str, ...] = ("password", "token", "secret"),
 ) -> dict[str, Any]:
     # TODO: make the redaction list configurable via Settings
-    return {
-        k: "***" if k in sensitive_keys else v
-        for k, v in entry.items()
-    }
+    return {k: "***" if k in sensitive_keys else v for k, v in entry.items()}
 
 
 # TODO: wire into /admin/audit/export once admin auth is ready
