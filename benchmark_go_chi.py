@@ -35,11 +35,8 @@ EXPECTED_UNUSED = {
     "classes": [],
 }
 
-# Symbols that look unused but are actually used (known false positives).
-# These are included so we can measure precision.
+
 ACTUALLY_USED = [
-    # node.routes is called via chained selector mx.tree.routes() in mux.go.
-    # AST-only analysis can't resolve chained selectors to their receiver type.
     ("tree.go", "routes"),
 ]
 
@@ -75,7 +72,7 @@ def _parse_skylos_output(stdout):
     for file, name, cat in findings:
         file = file.replace("\\", "/")
         if file.startswith(cwd):
-            file = file[len(cwd):].lstrip("/")
+            file = file[len(cwd) :].lstrip("/")
         elif file.startswith("/"):
             for prefix in ("middleware/", ""):
                 marker = f"/chi/{prefix}" if prefix else "/chi/"
@@ -96,10 +93,13 @@ def run_skylos():
     try:
         result = subprocess.run(
             [
-                "skylos", ".",
+                "skylos",
+                ".",
                 "--json",
-                "--confidence", "20",
-                "--exclude-folder", "_examples",
+                "--confidence",
+                "20",
+                "--exclude-folder",
+                "_examples",
                 "--no-default-excludes",
             ],
             capture_output=True,
@@ -117,8 +117,8 @@ def run_skylos():
 
 
 def _find_staticcheck():
-    """Find staticcheck binary on PATH or in ~/go/bin."""
     import shutil
+
     found = shutil.which("staticcheck")
     if found:
         return found
@@ -131,7 +131,9 @@ def _find_staticcheck():
 def run_staticcheck():
     sc_bin = _find_staticcheck()
     if not sc_bin:
-        print("staticcheck not found. Install: go install honnef.co/go/tools/cmd/staticcheck@latest")
+        print(
+            "staticcheck not found. Install: go install honnef.co/go/tools/cmd/staticcheck@latest"
+        )
         return [], 0.0
 
     start_time = time.perf_counter()
@@ -153,14 +155,8 @@ def run_staticcheck():
                 if file.startswith("./"):
                     file = file[2:]
                 symbol_desc = match.group(4)
-                # Extract the simple name from descriptions like:
-                #   "func debugPrintTree" -> "debugPrintTree"
-                #   "var nBlack" -> "nBlack"
-                #   "type Foo" -> "Foo"
-                #   "field Bar" -> "Bar"
                 parts = symbol_desc.strip().split()
                 name = parts[-1] if parts else symbol_desc
-                # Remove receiver prefix like "(*node)." from method names
                 if "." in name:
                     name = name.split(".")[-1]
                 kind = parts[0] if len(parts) > 1 else "unknown"
@@ -207,12 +203,8 @@ def compare_results():
     sc_findings, sc_time = run_staticcheck()
     sc_set = {(f, n) for f, n, _ in sc_findings}
 
-    s_tp, s_fp, s_fn, s_prec, s_rec, s_f1 = _calc_metrics(
-        skylos_set, expected_set, used_set
-    )
-    c_tp, c_fp, c_fn, c_prec, c_rec, c_f1 = _calc_metrics(
-        sc_set, expected_set, used_set
-    )
+    s_tp, s_fp, s_fn, s_prec, s_rec, s_f1 = _calc_metrics(skylos_set, expected_set, used_set)
+    c_tp, c_fp, c_fn, c_prec, c_rec, c_f1 = _calc_metrics(sc_set, expected_set, used_set)
 
     print("\n" + "=" * 72)
     print("Benchmark: Skylos vs staticcheck")
@@ -220,10 +212,7 @@ def compare_results():
     print("=" * 72)
     print(f"\nRepository: go-chi/chi (~18,000 stars)")
     print(f"Language: Go")
-    print(
-        f"Ground truth: {len(expected_set)} dead items, "
-        f"{len(used_set)} confirmed-alive items\n"
-    )
+    print(f"Ground truth: {len(expected_set)} dead items, {len(used_set)} confirmed-alive items\n")
 
     print("## Results\n")
     print("| Metric | Skylos | staticcheck |")
@@ -275,28 +264,14 @@ def compare_results():
         print("(none)")
 
     print("\n## Notes\n")
-    print(
-        "- go-chi/chi is a very well-maintained library with minimal dead code."
-    )
-    print(
-        "- 5 dead items are unused ANSI terminal color variables in middleware/terminal.go."
-    )
-    print(
-        "- 1 dead item is debugPrintTree in tree_test.go (debug helper never called)."
-    )
-    print(
-        "- Other color variables (nRed, nGreen, nYellow, nCyan, bRed, bGreen, etc.) ARE used"
-    )
+    print("- go-chi/chi is a very well-maintained library with minimal dead code.")
+    print("- 5 dead items are unused ANSI terminal color variables in middleware/terminal.go.")
+    print("- 1 dead item is debugPrintTree in tree_test.go (debug helper never called).")
+    print("- Other color variables (nRed, nGreen, nYellow, nCyan, bRed, bGreen, etc.) ARE used")
     print("  in middleware/recoverer.go for formatting panic stack traces.")
-    print(
-        "- Skylos uses AST-only analysis (no Go type resolution), so it skips test file"
-    )
-    print(
-        "  definitions by design. staticcheck uses full type info from the Go compiler."
-    )
-    print(
-        "- Struct fields are not tracked as definitions by Skylos (too granular for v1)."
-    )
+    print("- Skylos uses AST-only analysis (no Go type resolution), so it skips test file")
+    print("  definitions by design. staticcheck uses full type info from the Go compiler.")
+    print("- Struct fields are not tracked as definitions by Skylos (too granular for v1).")
 
 
 if __name__ == "__main__":

@@ -65,7 +65,7 @@ def _relativize(p: str) -> str:
     cwd = os.getcwd().replace("\\", "/")
     p = (p or "").replace("\\", "/")
     if p.startswith(cwd):
-        p = p[len(cwd):].lstrip("/")
+        p = p[len(cwd) :].lstrip("/")
     if p.startswith("./"):
         p = p[2:]
     return p
@@ -192,9 +192,7 @@ def compare_results():
     knip_fn = expected_set - knip_tp_set
     knip_total = len(knip_direct) + len(knip_dead_files)
 
-    s_tp, s_fp, s_fn, s_prec, s_rec, s_f1 = _calc_metrics(
-        skylos_set, expected_set, used_set
-    )
+    s_tp, s_fp, s_fn, s_prec, s_rec, s_f1 = _calc_metrics(skylos_set, expected_set, used_set)
 
     k_prec = len(knip_tp_set) / knip_total * 100 if knip_total else 0
     k_rec = len(knip_tp_set) / len(expected_set) * 100 if expected_set else 0
@@ -207,10 +205,7 @@ def compare_results():
     print(f"\nRepository: unjs/consola (~7,200 stars)")
     print(f"Language: TypeScript")
     print(f"Source: 21 files, ~2,050 LOC")
-    print(
-        f"Ground truth: {len(expected_set)} dead items, "
-        f"{len(used_set)} confirmed-alive items\n"
-    )
+    print(f"Ground truth: {len(expected_set)} dead items, {len(used_set)} confirmed-alive items\n")
 
     print("## Results\n")
     print("| Metric | Skylos | Knip |")
@@ -274,9 +269,7 @@ def compare_results():
         print("(none)")
 
     print("\n## Notes\n")
-    print(
-        "- consola is a well-maintained library with very little dead code."
-    )
+    print("- consola is a well-maintained library with very little dead code.")
     print(
         "- The only dead code is src/utils/format.ts — an entire orphaned module "
         "(never imported by any file). It contains 2 functions + 2 variables."
